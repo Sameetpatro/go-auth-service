@@ -1,0 +1,662 @@
+basePath: /
+definitions:
+  github_com_sameetpatro_go-qr-auth_internal_dto.AnalyticsOverview:
+    properties:
+      check_in_percentage:
+        type: number
+      today_entries:
+        type: integer
+      total_checked_in:
+        type: integer
+      total_guests:
+        type: integer
+      total_pending:
+        type: integer
+      vip_entries:
+        type: integer
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.AnalyticsResponse:
+    properties:
+      coordinator_entries:
+        items:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.CoordinatorEntryCount'
+        type: array
+      hourly_entry_count:
+        items:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.HourlyEntryCount'
+        type: array
+      master_entries:
+        items:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.CoordinatorEntryCount'
+        type: array
+      overview:
+        $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.AnalyticsOverview'
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.AuthResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
+      user:
+        $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.UserResponse'
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.CoordinatorEntryCount:
+    properties:
+      count:
+        type: integer
+      email:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.CoordinatorResponse:
+    properties:
+      coordinator_number:
+        type: integer
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      is_active:
+        type: boolean
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.CreateCoordinatorResponse:
+    properties:
+      email:
+        type: string
+      id:
+        type: integer
+      password:
+        type: string
+      role:
+        type: string
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.CreateGuestRequest:
+    properties:
+      email:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      phone_number:
+        type: string
+    required:
+    - name
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.DailyCount:
+    properties:
+      count:
+        type: integer
+      date:
+        type: string
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.GateCount:
+    properties:
+      count:
+        type: integer
+      gate_name:
+        type: string
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.GuestResponse:
+    properties:
+      checked_in_at:
+        type: string
+      checked_in_by:
+        type: integer
+      checked_in_by_email:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      is_checked_in:
+        type: boolean
+      metadata:
+        additionalProperties: true
+        type: object
+      name:
+        type: string
+      phone_number:
+        type: string
+      qr_image_url:
+        type: string
+      updated_at:
+        type: string
+      uuid:
+        type: string
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.GuestSearchResponse:
+    properties:
+      entry_status:
+        type: string
+      guest:
+        $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.GuestResponse'
+      qr_status:
+        type: string
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.HourlyEntryCount:
+    properties:
+      count:
+        type: integer
+      hour:
+        type: integer
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.ImportResult:
+    properties:
+      errors:
+        items:
+          type: string
+        type: array
+      failed:
+        type: integer
+      imported:
+        type: integer
+      total_rows:
+        type: integer
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.InsightsResponse:
+    properties:
+      average_entry_rate:
+        type: number
+      duplicate_scan_attempts:
+        type: integer
+      entries_per_hour:
+        items:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.HourlyEntryCount'
+        type: array
+      failed_scan_attempts:
+        type: integer
+      guests_added_per_day:
+        items:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.DailyCount'
+        type: array
+      most_active_coordinator:
+        $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.CoordinatorEntryCount'
+      peak_entry_time:
+        type: string
+      pending_guests:
+        type: integer
+      top_scanning_gates:
+        items:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.GateCount'
+        type: array
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 8
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.PaginatedGuestsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.GuestResponse'
+        type: array
+      meta:
+        $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.PaginationMeta'
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.PaginationMeta:
+    properties:
+      page:
+        type: integer
+      per_page:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.ResetPasswordResponse:
+    properties:
+      email:
+        type: string
+      new_password:
+        type: string
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.ScanRequest:
+    properties:
+      gate_name:
+        type: string
+      qr_token:
+        type: string
+    required:
+    - qr_token
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.ScanResponse:
+    properties:
+      checked_in_at:
+        type: string
+      checked_in_by:
+        type: integer
+      checked_in_by_email:
+        type: string
+      guest:
+        $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.GuestResponse'
+      message:
+        type: string
+      result:
+        type: string
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.SuccessResponse:
+    properties:
+      data: {}
+      message:
+        type: string
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.UpdateGuestRequest:
+    properties:
+      email:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      phone_number:
+        type: string
+    type: object
+  github_com_sameetpatro_go-qr-auth_internal_dto.UserResponse:
+    properties:
+      email:
+        type: string
+      id:
+        type: integer
+      role:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: QR-based Event Entry Management Platform API
+  title: Event Entry Management API
+  version: "1.0"
+paths:
+  /api/v1/analytics/dashboard:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.AnalyticsResponse'
+      security:
+      - BearerAuth: []
+      summary: Get dashboard analytics
+      tags:
+      - Analytics
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Login credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.AuthResponse'
+      summary: Login
+      tags:
+      - Auth
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.AuthResponse'
+      summary: Refresh access token
+      tags:
+      - Auth
+  /api/v1/coordinators:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.CoordinatorResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List coordinators (Master only)
+      tags:
+      - Coordinators
+    post:
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.CreateCoordinatorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create coordinator (Master only)
+      tags:
+      - Coordinators
+  /api/v1/coordinators/{id}/disable:
+    patch:
+      parameters:
+      - description: Coordinator ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.SuccessResponse'
+      security:
+      - BearerAuth: []
+      summary: Disable coordinator (Master only)
+      tags:
+      - Coordinators
+  /api/v1/coordinators/{id}/reset-password:
+    post:
+      parameters:
+      - description: Coordinator ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.ResetPasswordResponse'
+      security:
+      - BearerAuth: []
+      summary: Reset coordinator password (Master only)
+      tags:
+      - Coordinators
+  /api/v1/guests:
+    get:
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.PaginatedGuestsResponse'
+      security:
+      - BearerAuth: []
+      summary: List guests
+      tags:
+      - Guests
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Guest data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.CreateGuestRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.GuestResponse'
+      security:
+      - BearerAuth: []
+      summary: Create guest
+      tags:
+      - Guests
+  /api/v1/guests/{id}:
+    delete:
+      parameters:
+      - description: Guest ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.SuccessResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete guest (Master only)
+      tags:
+      - Guests
+    get:
+      parameters:
+      - description: Guest ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.GuestResponse'
+      security:
+      - BearerAuth: []
+      summary: Get guest by ID
+      tags:
+      - Guests
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Guest ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Guest data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.UpdateGuestRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.GuestResponse'
+      security:
+      - BearerAuth: []
+      summary: Update guest (Master only)
+      tags:
+      - Guests
+  /api/v1/guests/import:
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: CSV or XLSX file
+        in: formData
+        name: file
+        required: true
+        type: file
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.ImportResult'
+      security:
+      - BearerAuth: []
+      summary: Import guests from CSV/XLSX
+      tags:
+      - Guests
+  /api/v1/guests/search:
+    get:
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: per_page
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.PaginatedGuestsResponse'
+      security:
+      - BearerAuth: []
+      summary: Search guests
+      tags:
+      - Guests
+  /api/v1/guests/verify:
+    get:
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.GuestSearchResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Manual verification search
+      tags:
+      - Guests
+  /api/v1/insights:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.InsightsResponse'
+      security:
+      - BearerAuth: []
+      summary: Get insights
+      tags:
+      - Insights
+  /api/v1/reports/export/csv:
+    get:
+      produces:
+      - text/csv
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Export guests CSV report
+      tags:
+      - Reports
+  /api/v1/reports/export/pdf:
+    get:
+      produces:
+      - application/pdf
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Export PDF report
+      tags:
+      - Reports
+  /api/v1/scan:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: QR token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.ScanRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_sameetpatro_go-qr-auth_internal_dto.ScanResponse'
+      security:
+      - BearerAuth: []
+      summary: Scan QR code for entry
+      tags:
+      - Scan
+  /health:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - Health
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
