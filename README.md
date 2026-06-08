@@ -62,11 +62,7 @@ go run ./cmd/server
 | Email    | master@event.app   |
 | Password | Master@123         |
 
-## Docker Deployment
 
-```bash
-docker compose up -d
-```
 
 This starts PostgreSQL and the API server with automatic schema initialization.
 
@@ -179,7 +175,3 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed production deployment 
 - Secure HTTP headers
 - CORS configuration
 - Input validation on all endpoints
-
-## License
-
-MIT
