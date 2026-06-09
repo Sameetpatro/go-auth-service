@@ -75,23 +75,21 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid DB_CONN_MAX_LIFETIME: %w", err)
 	}
 
+	dbCfg, err := loadDatabaseConfig(connMaxLifetime)
+	if err != nil {
+		return nil, err
+	}
+
+	// Render sets PORT; fall back to SERVER_PORT for local dev.
+	port := getEnv("PORT", getEnv("SERVER_PORT", "8080"))
+
 	cfg := &Config{
 		Server: ServerConfig{
-			Port:        getEnv("SERVER_PORT", "8080"),
+			Port:        port,
 			Environment: getEnv("ENVIRONMENT", "development"),
 			BaseURL:     getEnv("SERVER_BASE_URL", "http://localhost:8080"),
 		},
-		Database: DatabaseConfig{
-			Host:            getEnv("DB_HOST", "localhost"),
-			Port:            getEnv("DB_PORT", "5432"),
-			User:            getEnv("DB_USER", "postgres"),
-			Password:        getEnv("DB_PASSWORD", "postgres"),
-			Name:            getEnv("DB_NAME", "event_entry"),
-			SSLMode:         getEnv("DB_SSLMODE", "disable"),
-			MaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 25),
-			MaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 10),
-			ConnMaxLifetime: connMaxLifetime,
-		},
+		Database: dbCfg,
 		JWT: JWTConfig{
 			AccessSecret:  getEnv("JWT_ACCESS_SECRET", "change-me-access-secret-min-32-chars!!"),
 			RefreshSecret: getEnv("JWT_REFRESH_SECRET", "change-me-refresh-secret-min-32-chars!"),

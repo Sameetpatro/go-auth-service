@@ -18,6 +18,7 @@ import (
 	"time"
 
 	jwtsvc "github.com/sameetpatro/go-qr-auth/internal/auth"
+	"github.com/joho/godotenv"
 	"github.com/sameetpatro/go-qr-auth/internal/audit"
 	"github.com/sameetpatro/go-qr-auth/internal/config"
 	"github.com/sameetpatro/go-qr-auth/internal/database"
@@ -33,6 +34,8 @@ import (
 )
 
 func main() {
+	_ = godotenv.Load() // optional .env for local dev; ignored on Render
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
@@ -43,6 +46,10 @@ func main() {
 		log.Fatalf("database: %v", err)
 	}
 	defer db.Close()
+
+	if err := database.RunMigrations(db); err != nil {
+		log.Fatalf("migration: %v", err)
+	}
 
 	// Repositories
 	userRepo := repository.NewUserRepository(db)
