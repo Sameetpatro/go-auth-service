@@ -369,6 +369,22 @@ func (h *GuestHandler) Import(c *gin.Context) {
 	response.Success(c, "Import completed", resp)
 }
 
+// InviteAll godoc
+// @Summary Send WhatsApp invitations to all guests (Master only)
+// @Tags Guests
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} dto.InviteAllResult
+// @Router /api/v1/guests/invite-all [post]
+func (h *GuestHandler) InviteAll(c *gin.Context) {
+	resp, err := h.guests.InviteAll(c.Request.Context(), middleware.GetUserID(c), middleware.GetRole(c), middleware.GetClientIP(c))
+	if err != nil {
+		response.InternalError(c, "Failed to send invitations")
+		return
+	}
+	response.Success(c, "Invitations processed", resp)
+}
+
 type ScanHandler struct {
 	scan *service.ScanService
 }

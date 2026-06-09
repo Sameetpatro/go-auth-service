@@ -12,6 +12,7 @@ import (
 	importsvc "github.com/sameetpatro/go-qr-auth/internal/guests"
 	"github.com/sameetpatro/go-qr-auth/internal/dto"
 	"github.com/sameetpatro/go-qr-auth/internal/models"
+	"github.com/sameetpatro/go-qr-auth/internal/notifications"
 )
 
 func (s *GuestService) Create(ctx context.Context, req dto.CreateGuestRequest, userID int64, role models.UserRole, ip string) (*dto.GuestResponse, error) {
@@ -242,6 +243,55 @@ func (s *GuestService) Import(ctx context.Context, filename string, r io.Reader,
 	if s.ws != nil {
 		s.ws.BroadcastDashboardUpdated()
 	}
+	return result, nil
+}
+
+func (s *GuestService) InviteAll(ctx context.Context, userID int64, role models.UserRole, ip string) (*dto.InviteAllResult, error) {
+	guests, _, err := s.guests.List(ctx, 100000, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &dto.InviteAllResult{Total: len(guests)}
+	for _, guest := range guests {
+		phone := ""
+		if guest.PhoneNumber != nil {
+			phone = *guest.PhoneNumber
+		}
+		if phone == "" {
+			result.Skipped++
+			result.SkippedGuests = append(result.SkippedGuests, guest.Name)
+			continue
+		}
+
+		qrURL := ""
+		if guest.QRImageURL != nil {
+			qrURL = *guest.QRImageURL
+		}
+		message := notifications.BuildGuestInvitationMessage(
+			guest.Name, s.event.Name, s.event.Date, s.event.Location, qrURL,
+		)
+
+		if err := s.notifications.SendGuestInvitation(ctx, guest.Name, phone,
+			s.event.Name, s.event.Date, s.event.Location, qrURL); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", guest.Name, err))
+			continue
+		}
+
+		result.Sent++
+		result.Invitations = append(result.Invitations, dto.GuestInvitation{
+			GuestID:     guest.ID,
+			Name:        guest.Name,
+			PhoneNumber: phone,
+			Message:     message,
+			QRImageURL:  qrURL,
+		})
+	}
+
+	s.audit.Log(ctx, &userID, &role, models.AuditInviteGuests,
+		fmt.Sprintf("Bulk WhatsApp invite: %d sent, %d skipped, %d failed", result.Sent, result.Skipped, result.Failed), ip)
+
 	return result, nil
 }
 

@@ -105,6 +105,24 @@ type ImportResult struct {
 	Errors      []string `json:"errors,omitempty"`
 }
 
+type GuestInvitation struct {
+	GuestID     int64  `json:"guest_id"`
+	Name        string `json:"name"`
+	PhoneNumber string `json:"phone_number"`
+	Message     string `json:"message"`
+	QRImageURL  string `json:"qr_image_url,omitempty"`
+}
+
+type InviteAllResult struct {
+	Total         int               `json:"total"`
+	Sent          int               `json:"sent"`
+	Skipped       int               `json:"skipped"`
+	Failed        int               `json:"failed"`
+	Invitations   []GuestInvitation `json:"invitations"`
+	SkippedGuests []string          `json:"skipped_guests,omitempty"`
+	Errors        []string          `json:"errors,omitempty"`
+}
+
 type AnalyticsOverview struct {
 	TotalGuests        int64   `json:"total_guests"`
 	TotalCheckedIn     int64   `json:"total_checked_in"`

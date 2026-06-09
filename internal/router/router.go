@@ -70,6 +70,7 @@ func Setup(h Handlers) *gin.Engine {
 
 				masterGuests := guests.Group("")
 				masterGuests.Use(middleware.RequireRole(models.RoleMaster))
+				masterGuests.POST("/invite-all", h.Guest.InviteAll)
 				masterGuests.PUT("/:id", h.Guest.Update)
 				masterGuests.DELETE("/:id", h.Guest.Delete)
 			}

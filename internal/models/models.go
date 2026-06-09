@@ -79,6 +79,7 @@ const (
 	AuditResetPassword      AuditAction = "RESET_PASSWORD"
 	AuditExportReport       AuditAction = "EXPORT_REPORT"
 	AuditImportGuests       AuditAction = "IMPORT_GUESTS"
+	AuditInviteGuests       AuditAction = "INVITE_GUESTS"
 )
 
 type AuditLog struct {

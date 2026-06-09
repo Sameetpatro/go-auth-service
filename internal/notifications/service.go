@@ -53,11 +53,20 @@ func (s *Service) Send(ctx context.Context, channel string, msg Message) error {
 	return p.SendMessage(ctx, msg)
 }
 
-func (s *Service) SendGuestInvitation(ctx context.Context, guestName, phone, eventName, eventDate, eventLocation, qrImageURL string) error {
-	body := fmt.Sprintf(
-		"Hello %s!\n\nYou are invited to %s\nDate: %s\nLocation: %s\n\nPlease present your QR code at the venue.",
+func BuildGuestInvitationMessage(guestName, eventName, eventDate, eventLocation, qrImageURL string) string {
+	msg := fmt.Sprintf(
+		"Hello %s!\n\nYou are invited to %s\nDate: %s\nLocation: %s",
 		guestName, eventName, eventDate, eventLocation,
 	)
+	if qrImageURL != "" {
+		msg += fmt.Sprintf("\n\nYour invitation QR code:\n%s", qrImageURL)
+	}
+	msg += "\n\nPlease present your QR code at the venue."
+	return msg
+}
+
+func (s *Service) SendGuestInvitation(ctx context.Context, guestName, phone, eventName, eventDate, eventLocation, qrImageURL string) error {
+	body := BuildGuestInvitationMessage(guestName, eventName, eventDate, eventLocation, qrImageURL)
 	msg := Message{
 		To:      phone,
 		Subject: fmt.Sprintf("Invitation to %s", eventName),
