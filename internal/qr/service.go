@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
-	"github.com/skip2/go-qrcode"
-
 	"github.com/sameetpatro/go-qr-auth/internal/config"
 )
 
@@ -18,13 +16,15 @@ type Service struct {
 	secret    string
 	imagePath string
 	imageURL  string
+	event     config.EventConfig
 }
 
-func NewService(cfg config.StorageConfig, jwtSecret string) *Service {
+func NewService(cfg config.StorageConfig, event config.EventConfig, jwtSecret string) *Service {
 	return &Service{
 		secret:    jwtSecret,
 		imagePath: cfg.QRImagePath,
 		imageURL:  cfg.QRImageURL,
+		event:     event,
 	}
 }
 
@@ -38,7 +38,13 @@ func (s *Service) GenerateGuestQR(guestUUID uuid.UUID) (token string, imageURL s
 	filename := fmt.Sprintf("%s.png", guestUUID.String())
 	filePath := filepath.Join(s.imagePath, filename)
 
-	if err := qrcode.WriteFile(token, qrcode.Medium, 256, filePath); err != nil {
+	labels := cardLabels{
+		title:    s.event.Name,
+		dateTime: s.event.Date,
+		location: s.event.Location,
+	}
+
+	if err := writeInvitationCard(filePath, token, labels); err != nil {
 		// Token is still valid for scanning; image is optional (e.g. read-only deploy paths).
 		return token, "", nil
 	}

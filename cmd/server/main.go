@@ -61,7 +61,7 @@ func main() {
 
 	// Core services
 	jwtService := jwtsvc.NewService(cfg.JWT)
-	qrService := qr.NewService(cfg.Storage, cfg.JWT.AccessSecret)
+	qrService := qr.NewService(cfg.Storage, cfg.Event, cfg.JWT.AccessSecret)
 	auditService := audit.NewService(auditRepo)
 	notificationService := notifications.NewService(
 		notifications.NewWhatsAppProvider(),

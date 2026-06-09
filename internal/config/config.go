@@ -97,9 +97,9 @@ func Load() (*Config, error) {
 			RefreshExpiry: refreshExpiry,
 		},
 		Event: EventConfig{
-			Name:     getEnv("EVENT_NAME", "Annual Gala 2026"),
-			Date:     getEnv("EVENT_DATE", "2026-06-15"),
-			Location: getEnv("EVENT_LOCATION", "Grand Convention Center"),
+			Name:     getEnv("EVENT_NAME", "FELICITATIONS & VEER GOKULA MANCHAN"),
+			Date:     getEnv("EVENT_DATE", "19 July 2026 | 2:00 PM"),
+			Location: getEnv("EVENT_LOCATION", "Bharat Mandapam, New Delhi"),
 		},
 		Storage: StorageConfig{
 			QRImagePath: getEnv("QR_IMAGE_PATH", "./storage/qr"),

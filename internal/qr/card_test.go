@@ -1,0 +1,27 @@
+package qr
+
+import (
+	"bytes"
+	"image/png"
+	"testing"
+)
+
+func TestRenderInvitationCard(t *testing.T) {
+	data, err := renderInvitationCard("test-token", cardLabels{
+		title:    "FELICITATIONS & VEER GOKULA MANCHAN",
+		dateTime: "19 July 2026 | 2:00 PM",
+		location: "Bharat Mandapam, New Delhi",
+	})
+	if err != nil {
+		t.Fatalf("render card: %v", err)
+	}
+
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("decode png: %v", err)
+	}
+	bounds := img.Bounds()
+	if bounds.Dx() < 300 || bounds.Dy() < 300 {
+		t.Fatalf("unexpected card size: %dx%d", bounds.Dx(), bounds.Dy())
+	}
+}

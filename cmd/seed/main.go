@@ -45,7 +45,7 @@ func main() {
 	guestRepo := repository.NewGuestRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
 	auditService := audit.NewService(auditRepo)
-	qrService := qr.NewService(cfg.Storage, cfg.JWT.AccessSecret)
+	qrService := qr.NewService(cfg.Storage, cfg.Event, cfg.JWT.AccessSecret)
 	notificationService := notifications.NewService(
 		notifications.NewWhatsAppProvider(),
 		notifications.NewEmailProvider(),
