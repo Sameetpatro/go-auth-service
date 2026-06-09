@@ -21,7 +21,7 @@ WORKDIR /app
 
 COPY --from=builder /server .
 COPY migrations/ migrations/
-RUN mkdir -p /app/storage/qr
+RUN mkdir -p /app/storage/qr && chown -R nobody:nogroup /app/storage
 
 EXPOSE 8080
 

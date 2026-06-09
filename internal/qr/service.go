@@ -39,7 +39,8 @@ func (s *Service) GenerateGuestQR(guestUUID uuid.UUID) (token string, imageURL s
 	filePath := filepath.Join(s.imagePath, filename)
 
 	if err := qrcode.WriteFile(token, qrcode.Medium, 256, filePath); err != nil {
-		return "", "", fmt.Errorf("generate qr image: %w", err)
+		// Token is still valid for scanning; image is optional (e.g. read-only deploy paths).
+		return token, "", nil
 	}
 
 	imageURL = fmt.Sprintf("%s/%s", s.imageURL, filename)

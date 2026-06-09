@@ -1,0 +1,21 @@
+name,phone_number,email,table,company
+Alice Johnson,+1-555-0101,alice.johnson@example.com,VIP-1,Acme Corp
+Bob Smith,+1-555-0102,bob.smith@example.com,A-12,TechStart
+Carol Williams,+1-555-0103,carol.w@example.com,B-5,Global Inc
+David Brown,+1-555-0104,david.brown@example.com,VIP-2,Acme Corp
+Emma Davis,+1-555-0105,emma.davis@example.com,C-8,MediaHub
+Frank Miller,+1-555-0106,frank.m@example.com,A-3,StartupX
+Grace Wilson,+1-555-0107,grace.wilson@example.com,B-14,DesignCo
+Henry Moore,+1-555-0108,henry.moore@example.com,VIP-3,Finance Ltd
+Ivy Taylor,+1-555-0109,ivy.taylor@example.com,C-2,HealthPlus
+Jack Anderson,+1-555-0110,jack.a@example.com,A-7,RetailMax
+Kate Thomas,+1-555-0111,kate.thomas@example.com,B-9,CloudNet
+Leo Jackson,+1-555-0112,leo.jackson@example.com,VIP-4,Acme Corp
+Mia White,+1-555-0113,mia.white@example.com,C-15,ArtStudio
+Noah Harris,+1-555-0114,noah.h@example.com,A-20,DataFlow
+Olivia Martin,+1-555-0115,olivia.m@example.com,B-1,GreenEnergy
+Paul Garcia,+1-555-0116,paul.garcia@example.com,VIP-5,LegalPro
+Quinn Martinez,+1-555-0117,quinn.m@example.com,C-11,FoodChain
+Rachel Robinson,+1-555-0118,rachel.r@example.com,A-5,TravelGo
+Sam Clark,+1-555-0119,sam.clark@example.com,B-18,AutoDrive
+Tina Lewis,+1-555-0120,tina.lewis@example.com,VIP-6,EventPro

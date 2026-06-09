@@ -27,7 +27,7 @@ services:
       - key: SERVER_BASE_URL
         sync: false
       - key: QR_IMAGE_PATH
-        value: /app/storage/qr
+        value: /tmp/storage/qr
       - key: QR_IMAGE_URL
         sync: false
       - key: AUTO_MIGRATE
