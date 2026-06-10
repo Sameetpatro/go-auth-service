@@ -26,3 +26,18 @@ seed:
 
 seed-remote:
 	@./scripts/seed_remote.sh
+
+reset:
+	go run ./cmd/reset
+
+reset-remote:
+	@chmod +x scripts/reset_remote.sh scripts/reset_and_seed_remote.sh scripts/list_qrs.sh
+	@./scripts/reset_remote.sh
+
+reset-and-seed-remote:
+	@chmod +x scripts/reset_remote.sh scripts/reset_and_seed_remote.sh scripts/list_qrs.sh
+	@./scripts/reset_and_seed_remote.sh
+
+list-qrs:
+	@chmod +x scripts/list_qrs.sh
+	@./scripts/list_qrs.sh

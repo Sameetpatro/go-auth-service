@@ -80,6 +80,7 @@ func main() {
 	analyticsService := service.NewAnalyticsService(analyticsRepo)
 	insightsService := service.NewInsightsService(analyticsRepo)
 	reportService := service.NewReportService(guestRepo, analyticsRepo, auditService)
+	resetService := service.NewResetService(db, cfg.Storage.QRImagePath)
 
 	// Handlers
 	handlers := router.Handlers{
@@ -88,6 +89,7 @@ func main() {
 		Guest:       handler.NewGuestHandler(guestService),
 		Scan:        handler.NewScanHandler(scanService),
 		Analytics:   handler.NewAnalyticsHandler(analyticsService, insightsService, reportService),
+		Admin:       handler.NewAdminHandler(resetService),
 		WSHub:       wsHub,
 		JWT:         jwtService,
 		Config:      cfg,

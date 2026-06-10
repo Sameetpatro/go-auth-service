@@ -502,6 +502,28 @@ func pagination(c *gin.Context) (int, int) {
 	return page, perPage
 }
 
+type AdminHandler struct {
+	reset *service.ResetService
+}
+
+func NewAdminHandler(reset *service.ResetService) *AdminHandler {
+	return &AdminHandler{reset: reset}
+}
+
+// ResetData godoc
+// @Summary Reset all guest and coordinator data (Master only)
+// @Tags Admin
+// @Security BearerAuth
+// @Success 200 {object} dto.SuccessResponse
+// @Router /api/v1/admin/reset [post]
+func (h *AdminHandler) ResetData(c *gin.Context) {
+	if err := h.reset.ResetAllData(c.Request.Context()); err != nil {
+		response.InternalError(c, "Failed to reset data")
+		return
+	}
+	response.Success(c, "All guest and coordinator data has been reset", nil)
+}
+
 // Health godoc
 // @Summary Health check
 // @Tags Health

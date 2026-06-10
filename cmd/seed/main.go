@@ -23,7 +23,8 @@ func main() {
 	_ = godotenv.Load()
 
 	csvPath := flag.String("file", "scripts/seed_guests.csv", "CSV file with guest rows")
-	coordinators := flag.Int("coordinators", 2, "Number of coordinator accounts to create if none exist")
+	coordinators := flag.Int("coordinators", 2, "Number of coordinator accounts to create")
+	reset := flag.Bool("reset", false, "Wipe all guest/coordinator data before seeding")
 	flag.Parse()
 
 	cfg, err := config.Load()
@@ -53,6 +54,7 @@ func main() {
 	)
 	guestService := service.NewGuestService(guestRepo, qrService, notificationService, cfg.Event, auditService, nil)
 	coordinatorService := service.NewCoordinatorService(userRepo, auditService)
+	resetService := service.NewResetService(db, cfg.Storage.QRImagePath)
 
 	ctx := context.Background()
 	master, err := userRepo.FindByEmail(ctx, "master@event.app")
@@ -60,8 +62,16 @@ func main() {
 		log.Fatalf("master user not found — run migrations first")
 	}
 
+	if *reset {
+		fmt.Println("Resetting all guest and coordinator data...")
+		if err := resetService.ResetAllData(ctx); err != nil {
+			log.Fatalf("reset: %v", err)
+		}
+		fmt.Println("Reset complete.")
+	}
+
 	importGuests(ctx, guestService, master, *csvPath)
-	seedCoordinators(ctx, coordinatorService, userRepo, master, *coordinators)
+	seedCoordinators(ctx, coordinatorService, master, *coordinators)
 }
 
 func importGuests(ctx context.Context, guestService *service.GuestService, master *models.User, csvPath string) {
@@ -86,23 +96,7 @@ func importGuests(ctx context.Context, guestService *service.GuestService, maste
 	}
 }
 
-func seedCoordinators(ctx context.Context, coordinatorService *service.CoordinatorService, userRepo *repository.UserRepository, master *models.User, count int) {
-	existing, err := userRepo.ListCoordinators(ctx)
-	if err != nil {
-		log.Fatalf("list coordinators: %v", err)
-	}
-	if len(existing) > 0 {
-		fmt.Printf("Coordinators already exist (%d) — skipping creation\n", len(existing))
-		for _, c := range existing {
-			status := "active"
-			if !c.IsActive {
-				status = "disabled"
-			}
-			fmt.Printf("  - %s (%s)\n", c.Email, status)
-		}
-		return
-	}
-
+func seedCoordinators(ctx context.Context, coordinatorService *service.CoordinatorService, master *models.User, count int) {
 	fmt.Printf("Creating %d coordinator account(s)...\n", count)
 	for i := 0; i < count; i++ {
 		resp, err := coordinatorService.Create(ctx, master.ID, "127.0.0.1")

@@ -28,28 +28,14 @@ for e in d.get('errors') or []:
     print(f'  - {e}')
 "
 
-echo "Creating coordinators (skips if ${COORDINATORS} already exist)..."
-EXISTING=$(curl -sf "${BASE_URL}/api/v1/coordinators" -H "Authorization: Bearer ${TOKEN}")
-EXISTING_COUNT=$(echo "$EXISTING" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data') or []))")
-
-if [ "$EXISTING_COUNT" -ge "$COORDINATORS" ]; then
-  echo "Already have ${EXISTING_COUNT} coordinator(s) — skipping creation"
-  echo "$EXISTING" | python3 -c "
-import sys, json
-for c in json.load(sys.stdin).get('data') or []:
-    print(f\"  - {c['email']} ({'active' if c['is_active'] else 'disabled'})\")
-"
-else
-  TO_CREATE=$((COORDINATORS - EXISTING_COUNT))
-  echo "Creating ${TO_CREATE} coordinator(s)..."
-  for i in $(seq 1 "$TO_CREATE"); do
-    RESP=$(curl -sf -X POST "${BASE_URL}/api/v1/coordinators" \
-      -H "Authorization: Bearer ${TOKEN}")
-    echo "$RESP" | python3 -c "
+echo "Creating ${COORDINATORS} coordinator(s)..."
+for i in $(seq 1 "$COORDINATORS"); do
+  RESP=$(curl -sf -X POST "${BASE_URL}/api/v1/coordinators" \
+    -H "Authorization: Bearer ${TOKEN}")
+  echo "$RESP" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)['data']
 print(f\"  Coordinator: email={d['email']} password={d['password']}\")
 "
-  done
-  echo "Save coordinator passwords — they are shown only once."
-fi
+done
+echo "Save coordinator passwords — they are shown only once."

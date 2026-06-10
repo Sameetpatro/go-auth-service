@@ -21,6 +21,7 @@ type Handlers struct {
 	Guest        *handler.GuestHandler
 	Scan         *handler.ScanHandler
 	Analytics    *handler.AnalyticsHandler
+	Admin        *handler.AdminHandler
 	WSHub        *websocket.Hub
 	JWT          *jwtsvc.Service
 	Config       *config.Config
@@ -91,6 +92,12 @@ func Setup(h Handlers) *gin.Engine {
 				coordinators.GET("", h.Coordinator.List)
 				coordinators.PATCH("/:id/disable", h.Coordinator.Disable)
 				coordinators.POST("/:id/reset-password", h.Coordinator.ResetPassword)
+			}
+
+			admin := protected.Group("/admin")
+			admin.Use(middleware.RequireRole(models.RoleMaster))
+			{
+				admin.POST("/reset", h.Admin.ResetData)
 			}
 		}
 	}

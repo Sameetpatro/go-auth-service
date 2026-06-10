@@ -156,6 +156,9 @@ func (r *GuestRepository) Update(ctx context.Context, guest *models.Guest) error
 }
 
 func (r *GuestRepository) Delete(ctx context.Context, id int64) error {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM scan_attempts WHERE guest_id = $1`, id); err != nil {
+		return err
+	}
 	result, err := r.db.ExecContext(ctx, `DELETE FROM guests WHERE id = $1`, id)
 	if err != nil {
 		return err
