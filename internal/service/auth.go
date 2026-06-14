@@ -135,7 +135,7 @@ func NewCoordinatorService(users *repository.UserRepository, audit *audit.Servic
 	return &CoordinatorService{users: users, audit: audit}
 }
 
-func (s *CoordinatorService) Create(ctx context.Context, masterID int64, ip string) (*dto.CreateCoordinatorResponse, error) {
+func (s *CoordinatorService) Create(ctx context.Context, creatorID int64, creatorRole models.UserRole, ip string) (*dto.CreateCoordinatorResponse, error) {
 	num, err := s.users.NextCoordinatorNumber(ctx)
 	if err != nil {
 		return nil, err
@@ -158,14 +158,13 @@ func (s *CoordinatorService) Create(ctx context.Context, masterID int64, ip stri
 		Role:              models.RoleCoordinator,
 		IsActive:          true,
 		CoordinatorNumber: &coordNum,
-		CreatedBy:         &masterID,
+		CreatedBy:         &creatorID,
 	}
 	if err := s.users.Create(ctx, user); err != nil {
 		return nil, err
 	}
 
-	role := models.RoleMaster
-	s.audit.Log(ctx, &masterID, &role, models.AuditCreateCoordinator,
+	s.audit.Log(ctx, &creatorID, &creatorRole, models.AuditCreateCoordinator,
 		fmt.Sprintf("Created coordinator %s", email), ip)
 
 	return &dto.CreateCoordinatorResponse{
@@ -194,17 +193,16 @@ func (s *CoordinatorService) List(ctx context.Context) ([]dto.CoordinatorRespons
 	return result, nil
 }
 
-func (s *CoordinatorService) Disable(ctx context.Context, masterID, coordinatorID int64, ip string) error {
+func (s *CoordinatorService) Disable(ctx context.Context, actorID int64, actorRole models.UserRole, coordinatorID int64, ip string) error {
 	if err := s.users.SetActive(ctx, coordinatorID, models.RoleCoordinator, false); err != nil {
 		return err
 	}
-	role := models.RoleMaster
-	s.audit.Log(ctx, &masterID, &role, models.AuditDisableCoordinator,
+	s.audit.Log(ctx, &actorID, &actorRole, models.AuditDisableCoordinator,
 		fmt.Sprintf("Disabled coordinator ID %d", coordinatorID), ip)
 	return nil
 }
 
-func (s *CoordinatorService) ResetPassword(ctx context.Context, masterID, coordinatorID int64, ip string) (*dto.ResetPasswordResponse, error) {
+func (s *CoordinatorService) ResetPassword(ctx context.Context, actorID int64, actorRole models.UserRole, coordinatorID int64, ip string) (*dto.ResetPasswordResponse, error) {
 	user, err := s.users.FindByID(ctx, coordinatorID)
 	if err != nil {
 		return nil, err
@@ -225,8 +223,8 @@ func (s *CoordinatorService) ResetPassword(ctx context.Context, masterID, coordi
 		return nil, err
 	}
 
-	role := models.RoleMaster
-	s.audit.Log(ctx, &masterID, &role, models.AuditResetPassword,
+	role := actorRole
+	s.audit.Log(ctx, &actorID, &role, models.AuditResetPassword,
 		fmt.Sprintf("Reset password for coordinator %s", user.Email), ip)
 
 	return &dto.ResetPasswordResponse{Email: user.Email, NewPassword: plainPassword}, nil

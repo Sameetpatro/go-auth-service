@@ -100,7 +100,7 @@ func NewCoordinatorHandler(coordinators *service.CoordinatorService, ws Coordina
 // @Success 201 {object} dto.CreateCoordinatorResponse
 // @Router /api/v1/coordinators [post]
 func (h *CoordinatorHandler) Create(c *gin.Context) {
-	resp, err := h.coordinators.Create(c.Request.Context(), middleware.GetUserID(c), middleware.GetClientIP(c))
+	resp, err := h.coordinators.Create(c.Request.Context(), middleware.GetUserID(c), middleware.GetRole(c), middleware.GetClientIP(c))
 	if err != nil {
 		response.InternalError(c, "Failed to create coordinator")
 		return
@@ -140,7 +140,7 @@ func (h *CoordinatorHandler) Disable(c *gin.Context) {
 		response.BadRequest(c, "Invalid coordinator ID")
 		return
 	}
-	if err := h.coordinators.Disable(c.Request.Context(), middleware.GetUserID(c), id, middleware.GetClientIP(c)); err != nil {
+	if err := h.coordinators.Disable(c.Request.Context(), middleware.GetUserID(c), middleware.GetRole(c), id, middleware.GetClientIP(c)); err != nil {
 		response.InternalError(c, "Failed to disable coordinator")
 		return
 	}
@@ -160,7 +160,7 @@ func (h *CoordinatorHandler) ResetPassword(c *gin.Context) {
 		response.BadRequest(c, "Invalid coordinator ID")
 		return
 	}
-	resp, err := h.coordinators.ResetPassword(c.Request.Context(), middleware.GetUserID(c), id, middleware.GetClientIP(c))
+	resp, err := h.coordinators.ResetPassword(c.Request.Context(), middleware.GetUserID(c), middleware.GetRole(c), id, middleware.GetClientIP(c))
 	if err != nil {
 		response.NotFound(c, "Coordinator not found")
 		return

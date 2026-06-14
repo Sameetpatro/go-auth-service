@@ -113,7 +113,7 @@ func Setup(h Handlers) *gin.Engine {
 			}
 
 			coordinators := protected.Group("/coordinators")
-			coordinators.Use(middleware.RequireRole(models.RoleMaster))
+			coordinators.Use(middleware.RequireRole(models.RoleMaster, models.RoleLeader))
 			{
 				coordinators.POST("", h.Coordinator.Create)
 				coordinators.GET("", h.Coordinator.List)

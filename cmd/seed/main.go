@@ -99,7 +99,7 @@ func importGuests(ctx context.Context, guestService *service.GuestService, maste
 func seedCoordinators(ctx context.Context, coordinatorService *service.CoordinatorService, master *models.User, count int) {
 	fmt.Printf("Creating %d coordinator account(s)...\n", count)
 	for i := 0; i < count; i++ {
-		resp, err := coordinatorService.Create(ctx, master.ID, "127.0.0.1")
+		resp, err := coordinatorService.Create(ctx, master.ID, models.RoleMaster, "127.0.0.1")
 		if err != nil {
 			log.Fatalf("create coordinator: %v", err)
 		}
