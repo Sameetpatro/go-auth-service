@@ -615,7 +615,7 @@ func (h *AdminHandler) ResetData(c *gin.Context) {
 		response.InternalError(c, "Failed to reset data")
 		return
 	}
-	response.Success(c, "All guest and coordinator data has been reset", nil)
+	response.Success(c, "All event data has been reset (master account kept)", nil)
 }
 
 // Health godoc

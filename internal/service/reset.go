@@ -29,7 +29,7 @@ func (s *ResetService) ResetAllData(ctx context.Context) error {
 		`DELETE FROM guests`,
 		`DELETE FROM audit_logs`,
 		`DELETE FROM refresh_tokens`,
-		`DELETE FROM users WHERE role = 'coordinator'`,
+		`DELETE FROM users WHERE role IN ('coordinator', 'leader')`,
 		`ALTER SEQUENCE coordinator_email_seq RESTART WITH 1`,
 	}
 

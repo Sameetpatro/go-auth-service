@@ -30,5 +30,5 @@ func main() {
 		log.Fatalf("reset: %v", err)
 	}
 
-	fmt.Println("All guest and coordinator data has been reset (master account kept).")
+	fmt.Println("All event data has been reset (master account kept).")
 }
