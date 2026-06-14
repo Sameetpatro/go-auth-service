@@ -12,6 +12,7 @@ import (
 	"github.com/sameetpatro/go-qr-auth/internal/audit"
 	"github.com/sameetpatro/go-qr-auth/internal/config"
 	"github.com/sameetpatro/go-qr-auth/internal/database"
+	"github.com/sameetpatro/go-qr-auth/internal/dto"
 	"github.com/sameetpatro/go-qr-auth/internal/models"
 	"github.com/sameetpatro/go-qr-auth/internal/notifications"
 	"github.com/sameetpatro/go-qr-auth/internal/qr"
@@ -52,8 +53,9 @@ func main() {
 		notifications.NewEmailProvider(),
 		notifications.NewSMSProvider(),
 	)
-	guestService := service.NewGuestService(guestRepo, qrService, notificationService, cfg.Event, auditService, nil)
+	guestService := service.NewGuestService(guestRepo, userRepo, qrService, notificationService, cfg.Event, auditService, nil)
 	coordinatorService := service.NewCoordinatorService(userRepo, auditService)
+	leaderService := service.NewLeaderService(userRepo, auditService)
 	resetService := service.NewResetService(db, cfg.Storage.QRImagePath)
 
 	ctx := context.Background()
@@ -70,18 +72,44 @@ func main() {
 		fmt.Println("Reset complete.")
 	}
 
-	importGuests(ctx, guestService, master, *csvPath)
+	seedLeaderID, err := ensureSeedLeader(ctx, leaderService, master)
+	if err != nil {
+		log.Fatalf("seed leader: %v", err)
+	}
+
+	importGuests(ctx, guestService, master, seedLeaderID, *csvPath)
 	seedCoordinators(ctx, coordinatorService, master, *coordinators)
 }
 
-func importGuests(ctx context.Context, guestService *service.GuestService, master *models.User, csvPath string) {
+func ensureSeedLeader(ctx context.Context, leaderService *service.LeaderService, master *models.User) (int64, error) {
+	leaders, err := leaderService.List(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(leaders) > 0 {
+		return leaders[0].ID, nil
+	}
+	gen := true
+	resp, err := leaderService.Create(ctx, master.ID, dto.CreateLeaderRequest{
+		Username:         "seedleader",
+		GeneratePassword: gen,
+	}, "127.0.0.1")
+	if err != nil {
+		return 0, err
+	}
+	fmt.Printf("Created seed leader: %s password=%s\n", resp.Email, resp.Password)
+	return resp.ID, nil
+}
+
+func importGuests(ctx context.Context, guestService *service.GuestService, master *models.User, leaderID int64, csvPath string) {
 	f, err := os.Open(csvPath)
 	if err != nil {
 		log.Fatalf("open csv: %v", err)
 	}
 	defer f.Close()
 
-	result, err := guestService.Import(ctx, csvPath, f, master.ID, master.Role, "127.0.0.1")
+	leaderIDPtr := leaderID
+	result, err := guestService.Import(ctx, csvPath, f, master.ID, master.Role, &leaderIDPtr, "127.0.0.1")
 	if err != nil {
 		log.Fatalf("import guests: %v", err)
 	}

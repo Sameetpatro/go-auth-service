@@ -17,10 +17,38 @@ import (
 )
 
 func (s *GuestService) Create(ctx context.Context, req dto.CreateGuestRequest, userID int64, role models.UserRole, ip string) (*dto.GuestResponse, error) {
-	if role != models.RoleLeader {
-		return nil, ErrForbiddenAction
+	ownerID, err := s.resolveGuestOwner(ctx, userID, role, req.LeaderID)
+	if err != nil {
+		return nil, err
 	}
+	return s.createOwnedGuest(ctx, req, ownerID, userID, role, ip)
+}
 
+func (s *GuestService) resolveGuestOwner(ctx context.Context, userID int64, role models.UserRole, leaderID *int64) (int64, error) {
+	switch role {
+	case models.RoleLeader:
+		return userID, nil
+	case models.RoleMaster:
+		if leaderID == nil || *leaderID <= 0 {
+			return 0, fmt.Errorf("leader_id is required when creating guests as master")
+		}
+		user, err := s.users.FindByID(ctx, *leaderID)
+		if err != nil {
+			return 0, err
+		}
+		if user == nil || user.Role != models.RoleLeader {
+			return 0, fmt.Errorf("invalid leader_id")
+		}
+		if !user.IsActive {
+			return 0, fmt.Errorf("leader is disabled")
+		}
+		return *leaderID, nil
+	default:
+		return 0, ErrForbiddenAction
+	}
+}
+
+func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuestRequest, ownerID int64, actorID int64, role models.UserRole, ip string) (*dto.GuestResponse, error) {
 	meta := qr.MergeMetadata(req.Metadata, req.Address, req.College)
 	address, college := metaString(meta, "address"), metaString(meta, "college")
 	if req.Address != nil && *req.Address != "" {
@@ -53,7 +81,7 @@ func (s *GuestService) Create(ctx context.Context, req dto.CreateGuestRequest, u
 		Email:       req.Email,
 		QRToken:     token,
 		Metadata:    metaJSON,
-		CreatedBy:   &userID,
+		CreatedBy:   &ownerID,
 	}
 	if err := s.guests.Create(ctx, guest); err != nil {
 		return nil, err
@@ -82,7 +110,7 @@ func (s *GuestService) Create(ctx context.Context, req dto.CreateGuestRequest, u
 		}()
 	}
 
-	s.audit.Log(ctx, &userID, &role, models.AuditCreateGuest,
+	s.audit.Log(ctx, &actorID, &role, models.AuditCreateGuest,
 		fmt.Sprintf("Created guest %s", req.Name), ip)
 
 	full, err := s.guests.FindByID(ctx, guest.ID)
@@ -164,7 +192,7 @@ func (s *GuestService) Update(ctx context.Context, id int64, req dto.UpdateGuest
 }
 
 func (s *GuestService) Delete(ctx context.Context, id int64, userID int64, role models.UserRole, ip string) error {
-	if role != models.RoleLeader {
+	if role != models.RoleLeader && role != models.RoleMaster {
 		return ErrForbiddenAction
 	}
 
@@ -175,8 +203,10 @@ func (s *GuestService) Delete(ctx context.Context, id int64, userID int64, role 
 	if existing == nil {
 		return sql.ErrNoRows
 	}
-	if existing.CreatedBy == nil || *existing.CreatedBy != userID {
-		return ErrForbiddenAction
+	if role == models.RoleLeader {
+		if existing.CreatedBy == nil || *existing.CreatedBy != userID {
+			return ErrForbiddenAction
+		}
 	}
 
 	if err := s.guests.Delete(ctx, id); err != nil {
@@ -287,9 +317,14 @@ func (s *GuestService) SearchForVerification(ctx context.Context, query string) 
 	return result, nil
 }
 
-func (s *GuestService) Import(ctx context.Context, filename string, r io.Reader, userID int64, role models.UserRole, ip string) (*dto.ImportResult, error) {
-	if role != models.RoleLeader {
+func (s *GuestService) Import(ctx context.Context, filename string, r io.Reader, userID int64, role models.UserRole, leaderID *int64, ip string) (*dto.ImportResult, error) {
+	if role != models.RoleLeader && role != models.RoleMaster {
 		return nil, ErrForbiddenAction
+	}
+
+	ownerID, err := s.resolveGuestOwner(ctx, userID, role, leaderID)
+	if err != nil {
+		return nil, err
 	}
 
 	rows, err := importsvc.ParseFile(ctx, filename, r)
@@ -315,7 +350,7 @@ func (s *GuestService) Import(ctx context.Context, filename string, r io.Reader,
 		if row.College != "" {
 			req.College = &row.College
 		}
-		if _, err := s.Create(ctx, req, userID, role, ip); err != nil {
+		if _, err := s.createOwnedGuest(ctx, req, ownerID, userID, role, ip); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("row %d: %v", i+2, err))
 		} else {

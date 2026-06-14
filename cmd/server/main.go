@@ -76,7 +76,7 @@ func main() {
 	authService := service.NewAuthService(userRepo, tokenRepo, jwtService, auditService)
 	coordinatorService := service.NewCoordinatorService(userRepo, auditService)
 	leaderService := service.NewLeaderService(userRepo, auditService)
-	guestService := service.NewGuestService(guestRepo, qrService, notificationService, cfg.Event, auditService, wsBroadcaster)
+	guestService := service.NewGuestService(guestRepo, userRepo, qrService, notificationService, cfg.Event, auditService, wsBroadcaster)
 	scanService := service.NewScanService(guestRepo, scanRepo, auditService, wsBroadcaster)
 	analyticsService := service.NewAnalyticsService(analyticsRepo)
 	insightsService := service.NewInsightsService(analyticsRepo)

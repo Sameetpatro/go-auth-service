@@ -74,13 +74,18 @@ func Setup(h Handlers) *gin.Engine {
 			}
 
 			leaderGuests := protected.Group("/guests")
-			leaderGuests.Use(middleware.RequireRole(models.RoleLeader))
+			leaderGuests.Use(middleware.RequireRole(models.RoleLeader, models.RoleMaster))
 			{
 				leaderGuests.POST("", h.Guest.Create)
 				leaderGuests.POST("/import", h.Guest.Import)
-				leaderGuests.POST("/invite-all", h.Guest.InviteAll)
-				leaderGuests.PUT("/:id", h.Guest.Update)
 				leaderGuests.DELETE("/:id", h.Guest.Delete)
+			}
+
+			leaderOnlyGuests := protected.Group("/guests")
+			leaderOnlyGuests.Use(middleware.RequireRole(models.RoleLeader))
+			{
+				leaderOnlyGuests.POST("/invite-all", h.Guest.InviteAll)
+				leaderOnlyGuests.PUT("/:id", h.Guest.Update)
 			}
 
 			verifyGroup := protected.Group("")

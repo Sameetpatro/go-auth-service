@@ -78,6 +78,7 @@ type CreateGuestRequest struct {
 	Email       *string                `json:"email,omitempty" binding:"omitempty,email"`
 	Address     *string                `json:"address,omitempty"`
 	College     *string                `json:"college,omitempty"`
+	LeaderID    *int64                 `json:"leader_id,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 

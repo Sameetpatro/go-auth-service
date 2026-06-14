@@ -232,6 +232,7 @@ func (s *CoordinatorService) ResetPassword(ctx context.Context, actorID int64, a
 
 type GuestService struct {
 	guests        *repository.GuestRepository
+	users         *repository.UserRepository
 	qr            QRGenerator
 	notifications NotificationSender
 	event         config.EventConfig
@@ -255,6 +256,7 @@ type WebSocketBroadcaster interface {
 
 func NewGuestService(
 	guests *repository.GuestRepository,
+	users *repository.UserRepository,
 	qr QRGenerator,
 	notifications NotificationSender,
 	event config.EventConfig,
@@ -262,7 +264,7 @@ func NewGuestService(
 	ws WebSocketBroadcaster,
 ) *GuestService {
 	return &GuestService{
-		guests: guests, qr: qr, notifications: notifications,
+		guests: guests, users: users, qr: qr, notifications: notifications,
 		event: event, audit: audit, ws: ws,
 	}
 }

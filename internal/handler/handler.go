@@ -450,8 +450,24 @@ func (h *GuestHandler) Import(c *gin.Context) {
 	}
 	defer file.Close()
 
+	var leaderID *int64
+	if lid := c.PostForm("leader_id"); lid != "" {
+		id, err := strconv.ParseInt(lid, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid leader_id")
+			return
+		}
+		leaderID = &id
+	}
+
+	role := middleware.GetRole(c)
+	if role == models.RoleMaster && leaderID == nil {
+		response.BadRequest(c, "leader_id is required when importing as master")
+		return
+	}
+
 	resp, err := h.guests.Import(c.Request.Context(), header.Filename, file,
-		middleware.GetUserID(c), middleware.GetRole(c), middleware.GetClientIP(c))
+		middleware.GetUserID(c), role, leaderID, middleware.GetClientIP(c))
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
