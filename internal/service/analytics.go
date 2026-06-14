@@ -17,7 +17,46 @@ func NewAnalyticsService(analytics *repository.AnalyticsRepository) *AnalyticsSe
 	return &AnalyticsService{analytics: analytics}
 }
 
-func (s *AnalyticsService) GetDashboard(ctx context.Context) (*dto.AnalyticsResponse, error) {
+func (s *AnalyticsService) GetDashboard(ctx context.Context, role models.UserRole) (*dto.AnalyticsResponse, error) {
+	if role == models.RoleCoordinator {
+		return s.getCoordinatorDashboard(ctx)
+	}
+	return s.getFullDashboard(ctx)
+}
+
+func (s *AnalyticsService) getCoordinatorDashboard(ctx context.Context) (*dto.AnalyticsResponse, error) {
+	total, err := s.analytics.TotalGuests(ctx)
+	if err != nil {
+		return nil, err
+	}
+	checkedIn, err := s.analytics.TotalCheckedIn(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	pending := total - checkedIn
+	var pct float64
+	if total > 0 {
+		pct = float64(checkedIn) / float64(total) * 100
+	}
+
+	statsDTO, err := s.buildLeaderGuestStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dto.AnalyticsResponse{
+		Overview: dto.AnalyticsOverview{
+			TotalGuests:       total,
+			TotalCheckedIn:    checkedIn,
+			TotalPending:      pending,
+			CheckInPercentage: pct,
+		},
+		LeaderGuestStats: statsDTO,
+	}, nil
+}
+
+func (s *AnalyticsService) getFullDashboard(ctx context.Context) (*dto.AnalyticsResponse, error) {
 	total, err := s.analytics.TotalGuests(ctx)
 	if err != nil {
 		return nil, err
@@ -68,6 +107,21 @@ func (s *AnalyticsService) GetDashboard(ctx context.Context) (*dto.AnalyticsResp
 		masterDTO[i] = dto.CoordinatorEntryCount{UserID: m.UserID, Email: m.Email, Count: m.Count}
 	}
 
+	leaderEntries, err := s.analytics.EntriesByRole(ctx, models.RoleLeader)
+	if err != nil {
+		return nil, err
+	}
+	leaderDTO := make([]dto.CoordinatorEntryCount, len(leaderEntries))
+	for i, l := range leaderEntries {
+		leaderDTO[i] = dto.CoordinatorEntryCount{UserID: l.UserID, Email: l.Email, Count: l.Count}
+	}
+
+	leaderStats, err := s.analytics.LeaderGuestStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	statsDTO := leaderStatsToDTO(leaderStats)
+
 	return &dto.AnalyticsResponse{
 		Overview: dto.AnalyticsOverview{
 			TotalGuests:       total,
@@ -79,8 +133,54 @@ func (s *AnalyticsService) GetDashboard(ctx context.Context) (*dto.AnalyticsResp
 		},
 		HourlyEntryCount:   hourlyDTO,
 		CoordinatorEntries: coordDTO,
+		LeaderEntries:      leaderDTO,
 		MasterEntries:      masterDTO,
+		LeaderGuestStats:   statsDTO,
 	}, nil
+}
+
+func (s *AnalyticsService) buildLeaderGuestStats(ctx context.Context) ([]dto.LeaderGuestStats, error) {
+	leaderStats, err := s.analytics.LeaderGuestStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return leaderStatsToDTO(leaderStats), nil
+}
+
+func leaderStatsToDTO(leaderStats []struct {
+	UserID      int64   `db:"user_id"`
+	Email       string  `db:"email"`
+	DisplayName *string `db:"display_name"`
+	TotalGuests int64   `db:"total_guests"`
+	CheckedIn   int64   `db:"checked_in"`
+}) []dto.LeaderGuestStats {
+	statsDTO := make([]dto.LeaderGuestStats, len(leaderStats))
+	for i, ls := range leaderStats {
+		username := ls.Email
+		if ls.DisplayName != nil {
+			username = *ls.DisplayName
+		} else if parts := splitEmail(ls.Email); len(parts) > 0 {
+			username = parts[0]
+		}
+		statsDTO[i] = dto.LeaderGuestStats{
+			UserID:        ls.UserID,
+			Email:         ls.Email,
+			Username:      username,
+			TotalGuests:   ls.TotalGuests,
+			CheckedIn:     ls.CheckedIn,
+			PendingGuests: ls.TotalGuests - ls.CheckedIn,
+		}
+	}
+	return statsDTO
+}
+
+func splitEmail(email string) []string {
+	for i, r := range email {
+		if r == '@' {
+			return []string{email[:i]}
+		}
+	}
+	return []string{email}
 }
 
 type InsightsService struct {

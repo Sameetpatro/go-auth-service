@@ -12,6 +12,7 @@ import (
 	"github.com/sameetpatro/go-qr-auth/internal/config"
 	"github.com/sameetpatro/go-qr-auth/internal/dto"
 	"github.com/sameetpatro/go-qr-auth/internal/models"
+	"github.com/sameetpatro/go-qr-auth/internal/qr"
 	"github.com/sameetpatro/go-qr-auth/internal/repository"
 	"github.com/sameetpatro/go-qr-auth/pkg/password"
 )
@@ -20,6 +21,8 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUserInactive       = errors.New("account is disabled")
 	ErrUnauthorized       = errors.New("unauthorized")
+	ErrDuplicateGuest     = errors.New("guest already exists")
+	ErrForbiddenAction    = errors.New("forbidden action")
 )
 
 type AuthService struct {
@@ -192,7 +195,7 @@ func (s *CoordinatorService) List(ctx context.Context) ([]dto.CoordinatorRespons
 }
 
 func (s *CoordinatorService) Disable(ctx context.Context, masterID, coordinatorID int64, ip string) error {
-	if err := s.users.SetActive(ctx, coordinatorID, false); err != nil {
+	if err := s.users.SetActive(ctx, coordinatorID, models.RoleCoordinator, false); err != nil {
 		return err
 	}
 	role := models.RoleMaster
@@ -239,7 +242,8 @@ type GuestService struct {
 }
 
 type QRGenerator interface {
-	GenerateGuestQR(guestUUID uuid.UUID) (token, imageURL string, err error)
+	SignToken(guestUUID uuid.UUID) string
+	GenerateGuestQR(input qr.GuestQRInput) (token, imageURL string, err error)
 }
 
 type NotificationSender interface {

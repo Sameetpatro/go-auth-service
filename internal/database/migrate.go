@@ -14,17 +14,26 @@ func RunMigrations(db *sqlx.DB) error {
 		return nil
 	}
 
-	sqlBytes, err := os.ReadFile("migrations/001_initial_schema.up.sql")
-	if err != nil {
-		return fmt.Errorf("read migration file: %w", err)
+	migrations := []string{
+		"migrations/001_initial_schema.up.sql",
+		"migrations/002_roles_and_guest_ownership.up.sql",
 	}
 
-	if _, err := db.Exec(string(sqlBytes)); err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "already exists") || strings.Contains(msg, "duplicate key") {
-			return nil
+	for _, path := range migrations {
+		sqlBytes, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read migration file %s: %w", path, err)
 		}
-		return fmt.Errorf("run migration: %w", err)
+
+		if _, err := db.Exec(string(sqlBytes)); err != nil {
+			msg := err.Error()
+			if strings.Contains(msg, "already exists") ||
+				strings.Contains(msg, "duplicate key") ||
+				strings.Contains(msg, "enum label") {
+				continue
+			}
+			return fmt.Errorf("run migration %s: %w", path, err)
+		}
 	}
 	return nil
 }

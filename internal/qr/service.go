@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/sameetpatro/go-qr-auth/internal/config"
 )
+
+type GuestQRInput struct {
+	UUID     uuid.UUID
+	GuestID  int64
+	Name     string
+	Phone    *string
+	Email    *string
+	Address  *string
+	College  *string
+	Metadata map[string]interface{}
+}
 
 type Service struct {
 	secret    string
@@ -28,29 +40,106 @@ func NewService(cfg config.StorageConfig, event config.EventConfig, jwtSecret st
 	}
 }
 
-func (s *Service) GenerateGuestQR(guestUUID uuid.UUID) (token string, imageURL string, err error) {
-	token = s.signToken(guestUUID.String())
+func (s *Service) SignToken(guestUUID uuid.UUID) string {
+	return s.signToken(guestUUID.String())
+}
+
+func (s *Service) GenerateGuestQR(input GuestQRInput) (token string, imageURL string, err error) {
+	token = s.signToken(input.UUID.String())
 
 	if err := os.MkdirAll(s.imagePath, 0o755); err != nil {
 		return "", "", fmt.Errorf("create qr directory: %w", err)
 	}
 
-	filename := fmt.Sprintf("%s.png", guestUUID.String())
-	filePath := filepath.Join(s.imagePath, filename)
-
-	labels := cardLabels{
-		title:    s.event.Name,
-		dateTime: s.event.Date,
-		location: s.event.Location,
+	guestID := input.GuestID
+	if guestID <= 0 {
+		return "", "", fmt.Errorf("guest id required for qr image")
 	}
 
-	if err := writeInvitationCard(filePath, token, labels); err != nil {
-		// Token is still valid for scanning; image is optional (e.g. read-only deploy paths).
+	filename := fmt.Sprintf("%s_%d.png", SanitizeFilename(input.Name), guestID)
+	filePath := filepath.Join(s.imagePath, filename)
+
+	info := s.buildCardInfo(input)
+	if err := writeInvitationCard(filePath, token, info); err != nil {
 		return token, "", nil
 	}
 
 	imageURL = fmt.Sprintf("%s/%s", s.imageURL, filename)
 	return token, imageURL, nil
+}
+
+func (s *Service) RegenerateCard(input GuestQRInput, token string) (imageURL string, err error) {
+	if err := os.MkdirAll(s.imagePath, 0o755); err != nil {
+		return "", err
+	}
+	guestID := input.GuestID
+	filename := fmt.Sprintf("%s_%d.png", SanitizeFilename(input.Name), guestID)
+	filePath := filepath.Join(s.imagePath, filename)
+	info := s.buildCardInfo(input)
+	if err := writeInvitationCard(filePath, token, info); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s/%s", s.imageURL, filename), nil
+}
+
+func (s *Service) buildCardInfo(input GuestQRInput) GuestCardInfo {
+	info := GuestCardInfo{
+		Name:          input.Name,
+		EventName:     s.event.Name,
+		EventDate:     s.event.Date,
+		EventLocation: s.event.Location,
+	}
+	if input.Phone != nil {
+		info.Phone = *input.Phone
+	}
+	if input.Email != nil {
+		info.Email = *input.Email
+	}
+	if input.Address != nil {
+		info.Address = *input.Address
+	} else if input.Metadata != nil {
+		if v, ok := input.Metadata["address"].(string); ok {
+			info.Address = v
+		}
+	}
+	if input.College != nil {
+		info.College = *input.College
+	} else if input.Metadata != nil {
+		if v, ok := input.Metadata["college"].(string); ok {
+			info.College = v
+		}
+	}
+	return info
+}
+
+func MetadataAddressCollege(meta map[string]interface{}) (address, college *string) {
+	if meta == nil {
+		return nil, nil
+	}
+	if v, ok := meta["address"].(string); ok && v != "" {
+		address = &v
+	}
+	if v, ok := meta["college"].(string); ok && v != "" {
+		college = &v
+	}
+	return address, college
+}
+
+func MergeMetadata(reqMeta map[string]interface{}, address, college *string) map[string]interface{} {
+	meta := make(map[string]interface{})
+	for k, v := range reqMeta {
+		meta[k] = v
+	}
+	if address != nil && *address != "" {
+		meta["address"] = *address
+	}
+	if college != nil && *college != "" {
+		meta["college"] = *college
+	}
+	if len(meta) == 0 {
+		return map[string]interface{}{}
+	}
+	return meta
 }
 
 func (s *Service) signToken(payload string) string {
@@ -90,4 +179,12 @@ func splitLastDot(s string) []string {
 		return []string{s}
 	}
 	return []string{s[:idx], s[idx+1:]}
+}
+
+func RawMetadata(meta json.RawMessage) map[string]interface{} {
+	var m map[string]interface{}
+	if len(meta) > 0 {
+		_ = json.Unmarshal(meta, &m)
+	}
+	return m
 }

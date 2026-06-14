@@ -1,0 +1,2 @@
+ALTER TABLE guests DROP COLUMN IF EXISTS created_by;
+ALTER TABLE users DROP COLUMN IF EXISTS display_name;

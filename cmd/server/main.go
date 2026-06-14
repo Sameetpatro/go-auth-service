@@ -75,6 +75,7 @@ func main() {
 
 	authService := service.NewAuthService(userRepo, tokenRepo, jwtService, auditService)
 	coordinatorService := service.NewCoordinatorService(userRepo, auditService)
+	leaderService := service.NewLeaderService(userRepo, auditService)
 	guestService := service.NewGuestService(guestRepo, qrService, notificationService, cfg.Event, auditService, wsBroadcaster)
 	scanService := service.NewScanService(guestRepo, scanRepo, auditService, wsBroadcaster)
 	analyticsService := service.NewAnalyticsService(analyticsRepo)
@@ -86,6 +87,7 @@ func main() {
 	handlers := router.Handlers{
 		Auth:        handler.NewAuthHandler(authService),
 		Coordinator: handler.NewCoordinatorHandler(coordinatorService, wsBroadcaster),
+		Leader:      handler.NewLeaderHandler(leaderService, wsBroadcaster),
 		Guest:       handler.NewGuestHandler(guestService),
 		Scan:        handler.NewScanHandler(scanService),
 		Analytics:   handler.NewAnalyticsHandler(analyticsService, insightsService, reportService),

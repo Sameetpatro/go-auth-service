@@ -10,8 +10,9 @@ import (
 type UserRole string
 
 const (
-	RoleMaster       UserRole = "master"
-	RoleCoordinator  UserRole = "coordinator"
+	RoleMaster      UserRole = "master"
+	RoleLeader      UserRole = "leader"
+	RoleCoordinator UserRole = "coordinator"
 )
 
 type User struct {
@@ -20,6 +21,7 @@ type User struct {
 	PasswordHash      string     `db:"password_hash" json:"-"`
 	Role              UserRole   `db:"role" json:"role"`
 	IsActive          bool       `db:"is_active" json:"is_active"`
+	DisplayName       *string    `db:"display_name" json:"display_name,omitempty"`
 	CoordinatorNumber *int       `db:"coordinator_number" json:"coordinator_number,omitempty"`
 	CreatedBy         *int64     `db:"created_by" json:"created_by,omitempty"`
 	CreatedAt         time.Time  `db:"created_at" json:"created_at"`
@@ -37,6 +39,7 @@ type Guest struct {
 	IsCheckedIn  bool            `db:"is_checked_in" json:"is_checked_in"`
 	CheckedInAt  *time.Time      `db:"checked_in_at" json:"checked_in_at,omitempty"`
 	CheckedInBy  *int64          `db:"checked_in_by" json:"checked_in_by,omitempty"`
+	CreatedBy    *int64          `db:"created_by" json:"created_by,omitempty"`
 	Metadata     json.RawMessage `db:"metadata" json:"metadata,omitempty"`
 	CreatedAt    time.Time       `db:"created_at" json:"created_at"`
 	UpdatedAt    time.Time       `db:"updated_at" json:"updated_at"`
@@ -44,7 +47,8 @@ type Guest struct {
 
 type GuestWithChecker struct {
 	Guest
-	CheckedInByEmail *string `db:"checked_in_by_email" json:"checked_in_by_email,omitempty"`
+	CheckedInByEmail  *string `db:"checked_in_by_email" json:"checked_in_by_email,omitempty"`
+	CreatedByEmail    *string `db:"created_by_email" json:"created_by_email,omitempty"`
 }
 
 type ScanAttempt struct {
@@ -75,7 +79,9 @@ const (
 	AuditUpdateGuest        AuditAction = "UPDATE_GUEST"
 	AuditDeleteGuest        AuditAction = "DELETE_GUEST"
 	AuditCreateCoordinator  AuditAction = "CREATE_COORDINATOR"
+	AuditCreateLeader       AuditAction = "CREATE_LEADER"
 	AuditDisableCoordinator AuditAction = "DISABLE_COORDINATOR"
+	AuditDisableLeader      AuditAction = "DISABLE_LEADER"
 	AuditResetPassword      AuditAction = "RESET_PASSWORD"
 	AuditExportReport       AuditAction = "EXPORT_REPORT"
 	AuditImportGuests       AuditAction = "IMPORT_GUESTS"

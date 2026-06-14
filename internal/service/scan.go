@@ -33,6 +33,9 @@ func NewScanService(
 }
 
 func (s *ScanService) Scan(ctx context.Context, req dto.ScanRequest, userID int64, role models.UserRole, ip string) (*dto.ScanResponse, error) {
+	if role == models.RoleMaster {
+		return nil, ErrForbiddenAction
+	}
 	guest, result, err := s.guests.CheckIn(ctx, req.QRToken, userID)
 	if err != nil {
 		return nil, err

@@ -8,6 +8,9 @@ import (
 	"image/draw"
 	"image/png"
 	"os"
+	"regexp"
+	"strings"
+	"unicode"
 
 	"github.com/skip2/go-qrcode"
 	"golang.org/x/image/font"
@@ -18,20 +21,36 @@ import (
 )
 
 const (
-	canvasWidth = 420
-	qrSize      = 256
-	horizPad    = 24
-	vertPad     = 20
-	lineGap     = 8
+	canvasWidth  = 480
+	qrSize       = 220
+	horizPad     = 28
+	vertPad      = 24
+	lineGap      = 6
+	headerHeight = 72
+	footerPad    = 20
 )
 
-type cardLabels struct {
-	title    string
-	dateTime string
-	location string
+var (
+	colorPrimary   = color.RGBA{R: 26, G: 35, B: 126, A: 255}   // deep indigo
+	colorAccent    = color.RGBA{R: 255, G: 193, B: 7, A: 255}   // gold accent
+	colorBg        = color.RGBA{R: 250, G: 251, B: 255, A: 255} // soft white
+	colorText      = color.RGBA{R: 33, G: 33, B: 33, A: 255}
+	colorMuted     = color.RGBA{R: 97, G: 97, B: 97, A: 255}
+	colorDivider   = color.RGBA{R: 224, G: 224, B: 224, A: 255}
+)
+
+type GuestCardInfo struct {
+	Name        string
+	Phone       string
+	Email       string
+	Address     string
+	College     string
+	EventName   string
+	EventDate   string
+	EventLocation string
 }
 
-func renderInvitationCard(token string, labels cardLabels) ([]byte, error) {
+func renderInvitationCard(token string, info GuestCardInfo) ([]byte, error) {
 	qrPNG, err := qrcode.Encode(token, qrcode.Medium, qrSize)
 	if err != nil {
 		return nil, fmt.Errorf("encode qr: %w", err)
@@ -42,37 +61,69 @@ func renderInvitationCard(token string, labels cardLabels) ([]byte, error) {
 		return nil, fmt.Errorf("decode qr: %w", err)
 	}
 
-	titleFace, err := loadFontFace(gobold.TTF, 15)
+	nameFace, err := loadFontFace(gobold.TTF, 20)
 	if err != nil {
 		return nil, err
 	}
-	bodyFace, err := loadFontFace(goregular.TTF, 13)
+	subtitleFace, err := loadFontFace(goregular.TTF, 12)
+	if err != nil {
+		return nil, err
+	}
+	bodyFace, err := loadFontFace(goregular.TTF, 11)
+	if err != nil {
+		return nil, err
+	}
+	labelFace, err := loadFontFace(gobold.TTF, 10)
 	if err != nil {
 		return nil, err
 	}
 
-	titleLines := wrapText(labels.title, titleFace, canvasWidth-2*horizPad)
-	bodyLines := append(
-		wrapText(labels.dateTime, bodyFace, canvasWidth-2*horizPad),
-		wrapText(labels.location, bodyFace, canvasWidth-2*horizPad)...,
+	detailLines := buildDetailLines(info, labelFace, bodyFace, canvasWidth-2*horizPad)
+	detailBlockHeight := textBlockHeight(detailLines, bodyFace, lineGap) + 8
+
+	eventLines := append(
+		wrapText(info.EventName, subtitleFace, canvasWidth-2*horizPad),
+		wrapText(info.EventDate, bodyFace, canvasWidth-2*horizPad)...,
 	)
+	eventBlockHeight := textBlockHeight(eventLines, bodyFace, lineGap)
 
-	titleBlockHeight := textBlockHeight(titleLines, titleFace, lineGap)
-	bodyBlockHeight := textBlockHeight(bodyLines, bodyFace, lineGap)
-	textGap := 16
-
-	canvasHeight := vertPad + qrSize + textGap + titleBlockHeight + lineGap + bodyBlockHeight + vertPad
+	canvasHeight := vertPad + headerHeight + qrSize + 20 + eventBlockHeight + 16 + detailBlockHeight + footerPad + vertPad
 
 	canvas := image.NewRGBA(image.Rect(0, 0, canvasWidth, canvasHeight))
-	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{color.White}, image.Point{}, draw.Src)
+	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{colorBg}, image.Point{}, draw.Src)
 
+	// Header band
+	draw.Draw(canvas, image.Rect(0, 0, canvasWidth, headerHeight), &image.Uniform{colorPrimary}, image.Point{}, draw.Src)
+	draw.Draw(canvas, image.Rect(0, headerHeight-4, canvasWidth, headerHeight), &image.Uniform{colorAccent}, image.Point{}, draw.Src)
+
+	// Guest name in header
+	nameLines := wrapText(strings.ToUpper(info.Name), nameFace, canvasWidth-2*horizPad)
+	nameY := (headerHeight - textBlockHeight(nameLines, nameFace, 4)) / 2
+	drawCenteredLines(canvas, nameLines, nameFace, nameY, 4, color.White)
+
+	// QR code with border
+	qrY := headerHeight + vertPad
 	qrX := (canvasWidth - qrSize) / 2
-	draw.Draw(canvas, image.Rect(qrX, vertPad, qrX+qrSize, vertPad+qrSize), qrImg, image.Point{}, draw.Over)
+	borderPad := 8
+	draw.Draw(canvas,
+		image.Rect(qrX-borderPad, qrY-borderPad, qrX+qrSize+borderPad, qrY+qrSize+borderPad),
+		&image.Uniform{color.White}, image.Point{}, draw.Src)
+	draw.Draw(canvas,
+		image.Rect(qrX-borderPad, qrY-borderPad, qrX+qrSize+borderPad, qrY+qrSize+borderPad),
+		&image.Uniform{colorDivider}, image.Point{}, draw.Src)
+	draw.Draw(canvas, image.Rect(qrX, qrY, qrX+qrSize, qrY+qrSize), qrImg, image.Point{}, draw.Over)
 
-	textY := vertPad + qrSize + textGap
-	textY = drawCenteredLines(canvas, titleLines, titleFace, textY, lineGap)
-	textY += lineGap
-	drawCenteredLines(canvas, bodyLines, bodyFace, textY, lineGap)
+	// Event info below QR
+	textY := qrY + qrSize + 20
+	textY = drawCenteredLines(canvas, eventLines, bodyFace, textY, lineGap, colorText)
+
+	// Divider
+	divY := textY + 12
+	draw.Draw(canvas, image.Rect(horizPad, divY, canvasWidth-horizPad, divY+1), &image.Uniform{colorDivider}, image.Point{}, draw.Src)
+
+	// Guest details at bottom
+	textY = divY + 14
+	drawLeftLines(canvas, detailLines, bodyFace, horizPad, textY, lineGap, colorMuted)
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, canvas); err != nil {
@@ -81,12 +132,58 @@ func renderInvitationCard(token string, labels cardLabels) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func writeInvitationCard(path, token string, labels cardLabels) error {
-	data, err := renderInvitationCard(token, labels)
+func buildDetailLines(info GuestCardInfo, labelFace, bodyFace font.Face, maxWidth int) []string {
+	var lines []string
+	addField := func(label, value string) {
+		if strings.TrimSpace(value) == "" {
+			return
+		}
+		lines = append(lines, fmt.Sprintf("%s: %s", label, value))
+	}
+	addField("Phone", info.Phone)
+	addField("Email", info.Email)
+	addField("Address", info.Address)
+	addField("College", info.College)
+
+	if len(lines) == 0 {
+		lines = append(lines, "Invitation Card")
+	}
+
+	var wrapped []string
+	for _, line := range lines {
+		wrapped = append(wrapped, wrapText(line, bodyFace, maxWidth)...)
+	}
+	return wrapped
+}
+
+func writeInvitationCard(path, token string, info GuestCardInfo) error {
+	data, err := renderInvitationCard(token, info)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+func SanitizeFilename(name string) string {
+	name = strings.TrimSpace(name)
+	var b strings.Builder
+	for _, r := range name {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(unicode.ToLower(r))
+		} else if r == ' ' || r == '-' || r == '_' {
+			b.WriteRune('_')
+		}
+	}
+	result := b.String()
+	result = regexp.MustCompile(`_+`).ReplaceAllString(result, "_")
+	result = strings.Trim(result, "_")
+	if result == "" {
+		return "guest"
+	}
+	if len(result) > 40 {
+		result = result[:40]
+	}
+	return result
 }
 
 func loadFontFace(ttf []byte, size float64) (font.Face, error) {
@@ -109,33 +206,27 @@ func wrapText(text string, face font.Face, maxWidth int) []string {
 	if text == "" {
 		return nil
 	}
-
 	words := splitWords(text)
 	var lines []string
 	var current string
-
 	for _, word := range words {
 		candidate := current
 		if candidate != "" {
 			candidate += " "
 		}
 		candidate += word
-
 		if textWidth(candidate, face) <= maxWidth {
 			current = candidate
 			continue
 		}
-
 		if current != "" {
 			lines = append(lines, current)
 			current = word
 			continue
 		}
-
 		lines = append(lines, word)
 		current = ""
 	}
-
 	if current != "" {
 		lines = append(lines, current)
 	}
@@ -164,43 +255,51 @@ func splitWords(text string) []string {
 }
 
 func textWidth(text string, face font.Face) int {
-	advance := font.MeasureString(face, text)
-	return advance.Ceil()
+	return font.MeasureString(face, text).Ceil()
 }
 
 func textBlockHeight(lines []string, face font.Face, gap int) int {
 	if len(lines) == 0 {
 		return 0
 	}
-	metrics := face.Metrics()
-	lineHeight := metrics.Height.Ceil()
+	lineHeight := face.Metrics().Height.Ceil()
 	return len(lines)*lineHeight + (len(lines)-1)*gap
 }
 
-func drawCenteredLines(dst *image.RGBA, lines []string, face font.Face, startY, gap int) int {
+func drawCenteredLines(dst *image.RGBA, lines []string, face font.Face, startY, gap int, col color.Color) int {
 	if len(lines) == 0 {
 		return startY
 	}
-
 	metrics := face.Metrics()
 	lineHeight := metrics.Height.Ceil()
 	y := startY + metrics.Ascent.Ceil()
-
 	for i, line := range lines {
 		width := textWidth(line, face)
 		x := (canvasWidth - width) / 2
-		drawer := &font.Drawer{
-			Dst:  dst,
-			Src:  image.NewUniform(color.Black),
-			Face: face,
-			Dot:  fixed.P(x, y),
-		}
+		drawer := &font.Drawer{Dst: dst, Src: image.NewUniform(col), Face: face, Dot: fixed.P(x, y)}
 		drawer.DrawString(line)
 		y += lineHeight
 		if i < len(lines)-1 {
 			y += gap
 		}
 	}
+	return y
+}
 
+func drawLeftLines(dst *image.RGBA, lines []string, face font.Face, x, startY, gap int, col color.Color) int {
+	if len(lines) == 0 {
+		return startY
+	}
+	metrics := face.Metrics()
+	lineHeight := metrics.Height.Ceil()
+	y := startY + metrics.Ascent.Ceil()
+	for i, line := range lines {
+		drawer := &font.Drawer{Dst: dst, Src: image.NewUniform(col), Face: face, Dot: fixed.P(x, y)}
+		drawer.DrawString(line)
+		y += lineHeight
+		if i < len(lines)-1 {
+			y += gap
+		}
+	}
 	return y
 }

@@ -168,6 +168,84 @@ func (h *CoordinatorHandler) ResetPassword(c *gin.Context) {
 	response.Success(c, "Password reset", resp)
 }
 
+type LeaderHandler struct {
+	leaders *service.LeaderService
+	ws      CoordinatorBroadcaster
+}
+
+func NewLeaderHandler(leaders *service.LeaderService, ws CoordinatorBroadcaster) *LeaderHandler {
+	return &LeaderHandler{leaders: leaders, ws: ws}
+}
+
+func (h *LeaderHandler) Create(c *gin.Context) {
+	var req dto.CreateLeaderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	resp, err := h.leaders.Create(c.Request.Context(), middleware.GetUserID(c), req, middleware.GetClientIP(c))
+	if errors.Is(err, service.ErrLeaderEmailExists) {
+		response.BadRequest(c, "Leader email already exists")
+		return
+	}
+	if errors.Is(err, service.ErrInvalidUsername) {
+		response.BadRequest(c, "Invalid username. Use letters, numbers, dots, dashes (2-50 chars).")
+		return
+	}
+	if err != nil {
+		response.InternalError(c, "Failed to create leader")
+		return
+	}
+	if h.ws != nil {
+		h.ws.BroadcastCoordinatorCreated(resp)
+	}
+	response.Created(c, "Leader created", resp)
+}
+
+func (h *LeaderHandler) List(c *gin.Context) {
+	resp, err := h.leaders.List(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, "Failed to list leaders")
+		return
+	}
+	response.Success(c, "Leaders retrieved", resp)
+}
+
+func (h *LeaderHandler) Disable(c *gin.Context) {
+	id, err := parseID(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid leader ID")
+		return
+	}
+	if err := h.leaders.Disable(c.Request.Context(), middleware.GetUserID(c), id, middleware.GetClientIP(c)); err != nil {
+		if errors.Is(err, service.ErrLeaderNotFound) {
+			response.NotFound(c, "Leader not found")
+			return
+		}
+		response.InternalError(c, "Failed to disable leader")
+		return
+	}
+	response.Success(c, "Leader disabled", nil)
+}
+
+func (h *LeaderHandler) ResetPassword(c *gin.Context) {
+	id, err := parseID(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid leader ID")
+		return
+	}
+	resp, err := h.leaders.ResetPassword(c.Request.Context(), middleware.GetUserID(c), id, middleware.GetClientIP(c))
+	if errors.Is(err, service.ErrLeaderNotFound) {
+		response.NotFound(c, "Leader not found")
+		return
+	}
+	if err != nil {
+		response.InternalError(c, "Failed to reset password")
+		return
+	}
+	response.Success(c, "Password reset", resp)
+}
+
 type GuestHandler struct {
 	guests *service.GuestService
 }
@@ -192,6 +270,14 @@ func (h *GuestHandler) Create(c *gin.Context) {
 		return
 	}
 	resp, err := h.guests.Create(c.Request.Context(), req, middleware.GetUserID(c), middleware.GetRole(c), middleware.GetClientIP(c))
+	if errors.Is(err, service.ErrDuplicateGuest) {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if errors.Is(err, service.ErrForbiddenAction) {
+		response.Forbidden(c, "Insufficient permissions")
+		return
+	}
 	if err != nil {
 		response.InternalError(c, "Failed to create guest")
 		return
@@ -289,6 +375,10 @@ func (h *GuestHandler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.guests.Delete(c.Request.Context(), id, middleware.GetUserID(c), middleware.GetRole(c), middleware.GetClientIP(c)); err != nil {
+		if errors.Is(err, service.ErrForbiddenAction) {
+			response.Forbidden(c, "You can only remove guests you invited")
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			response.NotFound(c, "Guest not found")
 			return
@@ -409,6 +499,10 @@ func (h *ScanHandler) Scan(c *gin.Context) {
 		return
 	}
 	resp, err := h.scan.Scan(c.Request.Context(), req, middleware.GetUserID(c), middleware.GetRole(c), middleware.GetClientIP(c))
+	if errors.Is(err, service.ErrForbiddenAction) {
+		response.Forbidden(c, "Master accounts cannot scan guests")
+		return
+	}
 	if err != nil {
 		response.InternalError(c, "Scan failed")
 		return
@@ -437,7 +531,7 @@ func NewAnalyticsHandler(analytics *service.AnalyticsService, insights *service.
 // @Success 200 {object} dto.AnalyticsResponse
 // @Router /api/v1/analytics/dashboard [get]
 func (h *AnalyticsHandler) Dashboard(c *gin.Context) {
-	resp, err := h.analytics.GetDashboard(c.Request.Context())
+	resp, err := h.analytics.GetDashboard(c.Request.Context(), middleware.GetRole(c))
 	if err != nil {
 		response.InternalError(c, "Failed to get analytics")
 		return

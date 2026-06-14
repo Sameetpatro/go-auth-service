@@ -141,6 +141,21 @@ func RequireRole(roles ...models.UserRole) gin.HandlerFunc {
 	}
 }
 
+func DenyRole(roles ...models.UserRole) gin.HandlerFunc {
+	denied := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		denied[string(r)] = true
+	}
+	return func(c *gin.Context) {
+		role, exists := c.Get(ContextRoleKey)
+		if exists && denied[role.(string)] {
+			response.Forbidden(c, "Insufficient permissions")
+			return
+		}
+		c.Next()
+	}
+}
+
 func GetUserID(c *gin.Context) int64 {
 	return c.GetInt64(ContextUserIDKey)
 }

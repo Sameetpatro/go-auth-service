@@ -13,18 +13,37 @@ import (
 	"github.com/sameetpatro/go-qr-auth/internal/dto"
 	"github.com/sameetpatro/go-qr-auth/internal/models"
 	"github.com/sameetpatro/go-qr-auth/internal/notifications"
+	"github.com/sameetpatro/go-qr-auth/internal/qr"
 )
 
 func (s *GuestService) Create(ctx context.Context, req dto.CreateGuestRequest, userID int64, role models.UserRole, ip string) (*dto.GuestResponse, error) {
-	guestUUID := uuid.New()
-	token, imageURL, err := s.qr.GenerateGuestQR(guestUUID)
+	if role != models.RoleLeader {
+		return nil, ErrForbiddenAction
+	}
+
+	meta := qr.MergeMetadata(req.Metadata, req.Address, req.College)
+	address, college := metaString(meta, "address"), metaString(meta, "college")
+	if req.Address != nil && *req.Address != "" {
+		address = req.Address
+	}
+	if req.College != nil && *req.College != "" {
+		college = req.College
+	}
+
+	dup, err := s.guests.FindDuplicate(ctx, req.Name, req.PhoneNumber, req.Email, address, college)
 	if err != nil {
 		return nil, err
 	}
+	if dup != nil {
+		return nil, fmt.Errorf("%w: guest '%s' already exists", ErrDuplicateGuest, dup.Name)
+	}
 
-	meta, err := json.Marshal(req.Metadata)
+	guestUUID := uuid.New()
+	token := s.qr.SignToken(guestUUID)
+
+	metaJSON, err := json.Marshal(meta)
 	if err != nil {
-		meta = []byte(`{}`)
+		metaJSON = []byte(`{}`)
 	}
 
 	guest := &models.Guest{
@@ -33,26 +52,44 @@ func (s *GuestService) Create(ctx context.Context, req dto.CreateGuestRequest, u
 		PhoneNumber: req.PhoneNumber,
 		Email:       req.Email,
 		QRToken:     token,
-		QRImageURL:  &imageURL,
-		Metadata:    meta,
+		Metadata:    metaJSON,
+		CreatedBy:   &userID,
 	}
 	if err := s.guests.Create(ctx, guest); err != nil {
 		return nil, err
 	}
 
-	phone := ""
-	if req.PhoneNumber != nil {
-		phone = *req.PhoneNumber
+	_, imageURL, err := s.qr.GenerateGuestQR(qr.GuestQRInput{
+		UUID:     guestUUID,
+		GuestID:  guest.ID,
+		Name:     req.Name,
+		Phone:    req.PhoneNumber,
+		Email:    req.Email,
+		Address:  address,
+		College:  college,
+		Metadata: meta,
+	})
+	if err == nil && imageURL != "" {
+		guest.QRImageURL = &imageURL
+		_ = s.guests.UpdateQRImage(ctx, guest.ID, imageURL)
 	}
-	go func() {
-		_ = s.notifications.SendGuestInvitation(context.Background(), req.Name, phone,
-			s.event.Name, s.event.Date, s.event.Location, imageURL)
-	}()
+
+	if req.PhoneNumber != nil && *req.PhoneNumber != "" {
+		phone := *req.PhoneNumber
+		go func() {
+			_ = s.notifications.SendGuestInvitation(context.Background(), req.Name, phone,
+				s.event.Name, s.event.Date, s.event.Location, imageURL)
+		}()
+	}
 
 	s.audit.Log(ctx, &userID, &role, models.AuditCreateGuest,
 		fmt.Sprintf("Created guest %s", req.Name), ip)
 
-	resp := toGuestResponse(&models.GuestWithChecker{Guest: *guest})
+	full, err := s.guests.FindByID(ctx, guest.ID)
+	if err != nil {
+		return nil, err
+	}
+	resp := toGuestResponse(full)
 	if s.ws != nil {
 		s.ws.BroadcastGuestAdded(resp)
 		s.ws.BroadcastDashboardUpdated()
@@ -60,13 +97,27 @@ func (s *GuestService) Create(ctx context.Context, req dto.CreateGuestRequest, u
 	return &resp, nil
 }
 
+func metaString(meta map[string]interface{}, key string) *string {
+	if v, ok := meta[key].(string); ok && v != "" {
+		return &v
+	}
+	return nil
+}
+
 func (s *GuestService) Update(ctx context.Context, id int64, req dto.UpdateGuestRequest, userID int64, role models.UserRole, ip string) (*dto.GuestResponse, error) {
+	if role != models.RoleLeader {
+		return nil, ErrForbiddenAction
+	}
+
 	existing, err := s.guests.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if existing == nil {
 		return nil, sql.ErrNoRows
+	}
+	if existing.CreatedBy == nil || *existing.CreatedBy != userID {
+		return nil, ErrForbiddenAction
 	}
 
 	if req.Name != nil {
@@ -78,13 +129,24 @@ func (s *GuestService) Update(ctx context.Context, id int64, req dto.UpdateGuest
 	if req.Email != nil {
 		existing.Email = req.Email
 	}
+
+	meta := qr.RawMetadata(existing.Metadata)
 	if req.Metadata != nil {
-		meta, err := json.Marshal(req.Metadata)
-		if err != nil {
-			return nil, err
+		for k, v := range req.Metadata {
+			meta[k] = v
 		}
-		existing.Metadata = meta
 	}
+	if req.Address != nil {
+		meta["address"] = *req.Address
+	}
+	if req.College != nil {
+		meta["college"] = *req.College
+	}
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		return nil, err
+	}
+	existing.Metadata = metaJSON
 
 	if err := s.guests.Update(ctx, &existing.Guest); err != nil {
 		return nil, err
@@ -102,6 +164,21 @@ func (s *GuestService) Update(ctx context.Context, id int64, req dto.UpdateGuest
 }
 
 func (s *GuestService) Delete(ctx context.Context, id int64, userID int64, role models.UserRole, ip string) error {
+	if role != models.RoleLeader {
+		return ErrForbiddenAction
+	}
+
+	existing, err := s.guests.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return sql.ErrNoRows
+	}
+	if existing.CreatedBy == nil || *existing.CreatedBy != userID {
+		return ErrForbiddenAction
+	}
+
 	if err := s.guests.Delete(ctx, id); err != nil {
 		return err
 	}
@@ -201,10 +278,9 @@ func (s *GuestService) SearchForVerification(ctx context.Context, query string) 
 		if g.IsCheckedIn {
 			entryStatus = "CHECKED_IN"
 		}
-		qrStatus := "VALID"
 		result[i] = dto.GuestSearchResponse{
 			Guest:       toGuestResponse(&g),
-			QRStatus:    qrStatus,
+			QRStatus:    "VALID",
 			EntryStatus: entryStatus,
 		}
 	}
@@ -212,6 +288,10 @@ func (s *GuestService) SearchForVerification(ctx context.Context, query string) 
 }
 
 func (s *GuestService) Import(ctx context.Context, filename string, r io.Reader, userID int64, role models.UserRole, ip string) (*dto.ImportResult, error) {
+	if role != models.RoleLeader {
+		return nil, ErrForbiddenAction
+	}
+
 	rows, err := importsvc.ParseFile(ctx, filename, r)
 	if err != nil {
 		return nil, err
@@ -220,14 +300,20 @@ func (s *GuestService) Import(ctx context.Context, filename string, r io.Reader,
 	result := &dto.ImportResult{TotalRows: len(rows)}
 	for i, row := range rows {
 		req := dto.CreateGuestRequest{
-			Name:        row.Name,
-			Metadata:    importsvc.RowToMetadata(row),
+			Name:     row.Name,
+			Metadata: importsvc.RowToMetadata(row),
 		}
 		if row.PhoneNumber != "" {
 			req.PhoneNumber = &row.PhoneNumber
 		}
 		if row.Email != "" {
 			req.Email = &row.Email
+		}
+		if row.Address != "" {
+			req.Address = &row.Address
+		}
+		if row.College != "" {
+			req.College = &row.College
 		}
 		if _, err := s.Create(ctx, req, userID, role, ip); err != nil {
 			result.Failed++
@@ -247,6 +333,10 @@ func (s *GuestService) Import(ctx context.Context, filename string, r io.Reader,
 }
 
 func (s *GuestService) InviteAll(ctx context.Context, userID int64, role models.UserRole, ip string) (*dto.InviteAllResult, error) {
+	if role != models.RoleLeader {
+		return nil, ErrForbiddenAction
+	}
+
 	guests, _, err := s.guests.List(ctx, 100000, 0)
 	if err != nil {
 		return nil, err
@@ -254,6 +344,10 @@ func (s *GuestService) InviteAll(ctx context.Context, userID int64, role models.
 
 	result := &dto.InviteAllResult{Total: len(guests)}
 	for _, guest := range guests {
+		if guest.CreatedBy == nil || *guest.CreatedBy != userID {
+			continue
+		}
+
 		phone := ""
 		if guest.PhoneNumber != nil {
 			phone = *guest.PhoneNumber
@@ -296,10 +390,7 @@ func (s *GuestService) InviteAll(ctx context.Context, userID int64, role models.
 }
 
 func toGuestResponse(g *models.GuestWithChecker) dto.GuestResponse {
-	var metadata map[string]interface{}
-	if len(g.Metadata) > 0 {
-		_ = json.Unmarshal(g.Metadata, &metadata)
-	}
+	metadata := qr.RawMetadata(g.Metadata)
 	return dto.GuestResponse{
 		ID:               g.ID,
 		UUID:             g.UUID,
@@ -311,6 +402,8 @@ func toGuestResponse(g *models.GuestWithChecker) dto.GuestResponse {
 		CheckedInAt:      g.CheckedInAt,
 		CheckedInBy:      g.CheckedInBy,
 		CheckedInByEmail: g.CheckedInByEmail,
+		CreatedBy:        g.CreatedBy,
+		CreatedByEmail:   g.CreatedByEmail,
 		Metadata:         metadata,
 		CreatedAt:        g.CreatedAt,
 		UpdatedAt:        g.UpdatedAt,

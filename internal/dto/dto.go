@@ -35,6 +35,30 @@ type CreateCoordinatorResponse struct {
 	Role     string `json:"role"`
 }
 
+type CreateLeaderRequest struct {
+	Username         string  `json:"username" binding:"required,min=2,max=50"`
+	Password         *string `json:"password,omitempty" binding:"omitempty,min=8"`
+	GeneratePassword bool    `json:"generate_password"`
+}
+
+type CreateLeaderResponse struct {
+	ID       int64  `json:"id"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+}
+
+type LeaderResponse struct {
+	ID          int64     `json:"id"`
+	Email       string    `json:"email"`
+	Username    string    `json:"username"`
+	IsActive    bool      `json:"is_active"`
+	GuestCount  int64     `json:"guest_count"`
+	CheckedIn   int64     `json:"checked_in_count"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type CoordinatorResponse struct {
 	ID                int64     `json:"id"`
 	Email             string    `json:"email"`
@@ -52,6 +76,8 @@ type CreateGuestRequest struct {
 	Name        string                 `json:"name" binding:"required,min=1,max=255"`
 	PhoneNumber *string                `json:"phone_number,omitempty"`
 	Email       *string                `json:"email,omitempty" binding:"omitempty,email"`
+	Address     *string                `json:"address,omitempty"`
+	College     *string                `json:"college,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
@@ -59,6 +85,8 @@ type UpdateGuestRequest struct {
 	Name        *string                `json:"name,omitempty" binding:"omitempty,min=1,max=255"`
 	PhoneNumber *string                `json:"phone_number,omitempty"`
 	Email       *string                `json:"email,omitempty" binding:"omitempty,email"`
+	Address     *string                `json:"address,omitempty"`
+	College     *string                `json:"college,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
@@ -73,7 +101,9 @@ type GuestResponse struct {
 	CheckedInAt     *time.Time             `json:"checked_in_at,omitempty"`
 	CheckedInBy     *int64                 `json:"checked_in_by,omitempty"`
 	CheckedInByEmail *string               `json:"checked_in_by_email,omitempty"`
-	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+	CreatedBy        *int64                `json:"created_by,omitempty"`
+	CreatedByEmail   *string               `json:"created_by_email,omitempty"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`
 	CreatedAt       time.Time              `json:"created_at"`
 	UpdatedAt       time.Time              `json:"updated_at"`
 }
@@ -147,7 +177,18 @@ type AnalyticsResponse struct {
 	Overview            AnalyticsOverview       `json:"overview"`
 	HourlyEntryCount    []HourlyEntryCount      `json:"hourly_entry_count"`
 	CoordinatorEntries  []CoordinatorEntryCount `json:"coordinator_entries"`
+	LeaderEntries       []CoordinatorEntryCount `json:"leader_entries"`
 	MasterEntries       []CoordinatorEntryCount `json:"master_entries"`
+	LeaderGuestStats    []LeaderGuestStats      `json:"leader_guest_stats,omitempty"`
+}
+
+type LeaderGuestStats struct {
+	UserID        int64  `json:"user_id"`
+	Email         string `json:"email"`
+	Username      string `json:"username"`
+	TotalGuests   int64  `json:"total_guests"`
+	CheckedIn     int64  `json:"checked_in"`
+	PendingGuests int64  `json:"pending_guests"`
 }
 
 type InsightsResponse struct {

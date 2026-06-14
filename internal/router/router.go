@@ -18,6 +18,7 @@ import (
 type Handlers struct {
 	Auth         *handler.AuthHandler
 	Coordinator  *handler.CoordinatorHandler
+	Leader       *handler.LeaderHandler
 	Guest        *handler.GuestHandler
 	Scan         *handler.ScanHandler
 	Analytics    *handler.AnalyticsHandler
@@ -58,32 +59,58 @@ func Setup(h Handlers) *gin.Engine {
 		protected := api.Group("")
 		protected.Use(middleware.JWTAuth(h.JWT))
 		{
-			protected.POST("/scan", h.Scan.Scan)
+			scanGroup := protected.Group("")
+			scanGroup.Use(middleware.DenyRole(models.RoleMaster))
+			{
+				scanGroup.POST("/scan", h.Scan.Scan)
+			}
 
 			guests := protected.Group("/guests")
+			guests.Use(middleware.RequireRole(models.RoleLeader, models.RoleMaster))
 			{
 				guests.GET("", h.Guest.List)
 				guests.GET("/search", h.Guest.Search)
-				guests.GET("/verify", h.Guest.VerifySearch)
-				guests.POST("", h.Guest.Create)
-				guests.POST("/import", h.Guest.Import)
 				guests.GET("/:id", h.Guest.Get)
+			}
 
-				masterGuests := guests.Group("")
-				masterGuests.Use(middleware.RequireRole(models.RoleMaster))
-				masterGuests.POST("/invite-all", h.Guest.InviteAll)
-				masterGuests.PUT("/:id", h.Guest.Update)
-				masterGuests.DELETE("/:id", h.Guest.Delete)
+			leaderGuests := protected.Group("/guests")
+			leaderGuests.Use(middleware.RequireRole(models.RoleLeader))
+			{
+				leaderGuests.POST("", h.Guest.Create)
+				leaderGuests.POST("/import", h.Guest.Import)
+				leaderGuests.POST("/invite-all", h.Guest.InviteAll)
+				leaderGuests.PUT("/:id", h.Guest.Update)
+				leaderGuests.DELETE("/:id", h.Guest.Delete)
+			}
+
+			verifyGroup := protected.Group("")
+			verifyGroup.Use(middleware.RequireRole(models.RoleLeader))
+			{
+				verifyGroup.GET("/guests/verify", h.Guest.VerifySearch)
 			}
 
 			analytics := protected.Group("/analytics")
 			analytics.GET("/dashboard", h.Analytics.Dashboard)
 
-			protected.GET("/insights", h.Analytics.Insights)
+			insights := protected.Group("")
+			insights.Use(middleware.DenyRole(models.RoleCoordinator))
+			{
+				insights.GET("/insights", h.Analytics.Insights)
+			}
 
 			reports := protected.Group("/reports")
+			reports.Use(middleware.RequireRole(models.RoleLeader, models.RoleMaster))
 			reports.GET("/export/csv", h.Analytics.ExportCSV)
 			reports.GET("/export/pdf", h.Analytics.ExportPDF)
+
+			leaders := protected.Group("/leaders")
+			leaders.Use(middleware.RequireRole(models.RoleMaster))
+			{
+				leaders.POST("", h.Leader.Create)
+				leaders.GET("", h.Leader.List)
+				leaders.PATCH("/:id/disable", h.Leader.Disable)
+				leaders.POST("/:id/reset-password", h.Leader.ResetPassword)
+			}
 
 			coordinators := protected.Group("/coordinators")
 			coordinators.Use(middleware.RequireRole(models.RoleMaster))

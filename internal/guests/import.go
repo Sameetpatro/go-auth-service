@@ -15,11 +15,13 @@ type GuestRow struct {
 	Name        string
 	PhoneNumber string
 	Email       string
+	Address     string
+	College     string
 	Extra       map[string]string
 }
 
 var coreFields = map[string]bool{
-	"name": true, "phone_number": true, "email": true,
+	"name": true, "phone_number": true, "email": true, "address": true, "college": true,
 }
 
 type Parser struct{}
@@ -89,6 +91,10 @@ func (p *Parser) parseRecords(headers []string, records [][]string) ([]GuestRow,
 				row.PhoneNumber = val
 			case "email":
 				row.Email = val
+			case "address":
+				row.Address = val
+			case "college":
+				row.College = val
 			default:
 				if val != "" {
 					row.Extra[field] = val

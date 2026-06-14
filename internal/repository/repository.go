@@ -54,12 +54,12 @@ func (r *UserRepository) NextCoordinatorNumber(ctx context.Context) (int, error)
 
 func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	query := `
-		INSERT INTO users (email, password_hash, role, is_active, coordinator_number, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO users (email, password_hash, role, is_active, display_name, coordinator_number, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, created_at, updated_at`
 	return r.db.QueryRowxContext(ctx, query,
 		user.Email, user.PasswordHash, user.Role, user.IsActive,
-		user.CoordinatorNumber, user.CreatedBy,
+		user.DisplayName, user.CoordinatorNumber, user.CreatedBy,
 	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
 }
 
@@ -71,20 +71,44 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, id int64, hash stri
 	return err
 }
 
-func (r *UserRepository) SetActive(ctx context.Context, id int64, active bool) error {
+func (r *UserRepository) SetActive(ctx context.Context, id int64, role models.UserRole, active bool) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2 AND role = 'coordinator'`,
-		active, id,
+		`UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2 AND role = $3`,
+		active, id, role,
 	)
 	return err
 }
 
-func (r *UserRepository) ListCoordinators(ctx context.Context) ([]models.User, error) {
+func (r *UserRepository) ListByRole(ctx context.Context, role models.UserRole) ([]models.User, error) {
 	var users []models.User
 	err := r.db.SelectContext(ctx, &users,
-		`SELECT * FROM users WHERE role = 'coordinator' ORDER BY coordinator_number ASC`,
+		`SELECT * FROM users WHERE role = $1 ORDER BY created_at ASC`, role,
 	)
 	return users, err
+}
+
+func (r *UserRepository) ListCoordinators(ctx context.Context) ([]models.User, error) {
+	return r.ListByRole(ctx, models.RoleCoordinator)
+}
+
+func (r *UserRepository) ListLeaders(ctx context.Context) ([]models.User, error) {
+	return r.ListByRole(ctx, models.RoleLeader)
+}
+
+func (r *UserRepository) EmailExists(ctx context.Context, email string) (bool, error) {
+	var exists bool
+	err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)`, email)
+	return exists, err
+}
+
+func (r *UserRepository) GuestCountsForLeader(ctx context.Context, leaderID int64) (total, checkedIn int64, err error) {
+	err = r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM guests WHERE created_by = $1`, leaderID)
+	if err != nil {
+		return 0, 0, err
+	}
+	err = r.db.GetContext(ctx, &checkedIn,
+		`SELECT COUNT(*) FROM guests WHERE created_by = $1 AND is_checked_in = TRUE`, leaderID)
+	return total, checkedIn, err
 }
 
 type GuestRepository struct {
@@ -95,27 +119,29 @@ func NewGuestRepository(db *sqlx.DB) *GuestRepository {
 	return &GuestRepository{db: db}
 }
 
+const guestSelectBase = `
+	SELECT g.*, u.email AS checked_in_by_email, creator.email AS created_by_email
+	FROM guests g
+	LEFT JOIN users u ON g.checked_in_by = u.id
+	LEFT JOIN users creator ON g.created_by = creator.id`
+
 func (r *GuestRepository) Create(ctx context.Context, guest *models.Guest) error {
 	if guest.Metadata == nil {
 		guest.Metadata = json.RawMessage(`{}`)
 	}
 	query := `
-		INSERT INTO guests (uuid, name, phone_number, email, qr_token, qr_image_url, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO guests (uuid, name, phone_number, email, qr_token, qr_image_url, metadata, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, created_at, updated_at`
 	return r.db.QueryRowxContext(ctx, query,
 		guest.UUID, guest.Name, guest.PhoneNumber, guest.Email,
-		guest.QRToken, guest.QRImageURL, guest.Metadata,
+		guest.QRToken, guest.QRImageURL, guest.Metadata, guest.CreatedBy,
 	).Scan(&guest.ID, &guest.CreatedAt, &guest.UpdatedAt)
 }
 
 func (r *GuestRepository) FindByID(ctx context.Context, id int64) (*models.GuestWithChecker, error) {
 	var guest models.GuestWithChecker
-	query := `
-		SELECT g.*, u.email AS checked_in_by_email
-		FROM guests g
-		LEFT JOIN users u ON g.checked_in_by = u.id
-		WHERE g.id = $1`
+	query := guestSelectBase + ` WHERE g.id = $1`
 	err := r.db.GetContext(ctx, &guest, query, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -128,11 +154,7 @@ func (r *GuestRepository) FindByID(ctx context.Context, id int64) (*models.Guest
 
 func (r *GuestRepository) FindByQRToken(ctx context.Context, token string) (*models.GuestWithChecker, error) {
 	var guest models.GuestWithChecker
-	query := `
-		SELECT g.*, u.email AS checked_in_by_email
-		FROM guests g
-		LEFT JOIN users u ON g.checked_in_by = u.id
-		WHERE g.qr_token = $1`
+	query := guestSelectBase + ` WHERE g.qr_token = $1`
 	err := r.db.GetContext(ctx, &guest, query, token)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -141,6 +163,12 @@ func (r *GuestRepository) FindByQRToken(ctx context.Context, token string) (*mod
 		return nil, err
 	}
 	return &guest, nil
+}
+
+func (r *GuestRepository) UpdateQRImage(ctx context.Context, id int64, imageURL string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE guests SET qr_image_url = $1, updated_at = NOW() WHERE id = $2`, imageURL, id)
+	return err
 }
 
 func (r *GuestRepository) Update(ctx context.Context, guest *models.Guest) error {
@@ -180,11 +208,9 @@ func (r *GuestRepository) Search(ctx context.Context, query string, limit, offse
 		return nil, 0, err
 	}
 
-	selectQuery := `
-		SELECT g.*, u.email AS checked_in_by_email
-		FROM guests g
-		LEFT JOIN users u ON g.checked_in_by = u.id
+	selectQuery := guestSelectBase + `
 		WHERE g.name ILIKE $1 OR g.phone_number ILIKE $1 OR g.email ILIKE $1
+		   OR g.metadata->>'address' ILIKE $1 OR g.metadata->>'college' ILIKE $1
 		ORDER BY g.name ASC
 		LIMIT $2 OFFSET $3`
 	var guests []models.GuestWithChecker
@@ -200,10 +226,7 @@ func (r *GuestRepository) List(ctx context.Context, limit, offset int) ([]models
 		return nil, 0, err
 	}
 
-	query := `
-		SELECT g.*, u.email AS checked_in_by_email
-		FROM guests g
-		LEFT JOIN users u ON g.checked_in_by = u.id
+	query := guestSelectBase + `
 		ORDER BY g.created_at DESC
 		LIMIT $1 OFFSET $2`
 	var guests []models.GuestWithChecker
@@ -211,6 +234,61 @@ func (r *GuestRepository) List(ctx context.Context, limit, offset int) ([]models
 		return nil, 0, err
 	}
 	return guests, total, nil
+}
+
+// FindDuplicate returns an existing guest matching name, phone, email, address, or college.
+func (r *GuestRepository) FindDuplicate(ctx context.Context, name string, phone, email, address, college *string) (*models.GuestWithChecker, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, nil
+	}
+
+	query := guestSelectBase + `
+		WHERE LOWER(TRIM(g.name)) = LOWER($1)`
+	args := []interface{}{name}
+	argIdx := 2
+
+	if phone != nil && strings.TrimSpace(*phone) != "" {
+		query += fmt.Sprintf(` OR g.phone_number = $%d`, argIdx)
+		args = append(args, strings.TrimSpace(*phone))
+		argIdx++
+	}
+	if email != nil && strings.TrimSpace(*email) != "" {
+		query += fmt.Sprintf(` OR LOWER(g.email) = LOWER($%d)`, argIdx)
+		args = append(args, strings.TrimSpace(*email))
+		argIdx++
+	}
+	if address != nil && strings.TrimSpace(*address) != "" {
+		query += fmt.Sprintf(` OR LOWER(g.metadata->>'address') = LOWER($%d)`, argIdx)
+		args = append(args, strings.TrimSpace(*address))
+		argIdx++
+	}
+	if college != nil && strings.TrimSpace(*college) != "" {
+		query += fmt.Sprintf(` OR LOWER(g.metadata->>'college') = LOWER($%d)`, argIdx)
+		args = append(args, strings.TrimSpace(*college))
+	}
+
+	query += ` LIMIT 1`
+
+	var guest models.GuestWithChecker
+	err := r.db.GetContext(ctx, &guest, query, args...)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &guest, nil
+}
+
+func (r *GuestRepository) CountByCreator(ctx context.Context, userID int64) (total, checkedIn int64, err error) {
+	err = r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM guests WHERE created_by = $1`, userID)
+	if err != nil {
+		return 0, 0, err
+	}
+	err = r.db.GetContext(ctx, &checkedIn,
+		`SELECT COUNT(*) FROM guests WHERE created_by = $1 AND is_checked_in = TRUE`, userID)
+	return total, checkedIn, err
 }
 
 // CheckIn performs atomic check-in with SELECT FOR UPDATE to prevent race conditions.
@@ -233,11 +311,7 @@ func (r *GuestRepository) CheckIn(ctx context.Context, qrToken string, userID in
 
 	if guest.IsCheckedIn {
 		var result models.GuestWithChecker
-		fetchQuery := `
-			SELECT g.*, u.email AS checked_in_by_email
-			FROM guests g
-			LEFT JOIN users u ON g.checked_in_by = u.id
-			WHERE g.id = $1`
+		fetchQuery := guestSelectBase + ` WHERE g.id = $1`
 		if err := tx.GetContext(ctx, &result, fetchQuery, guest.ID); err != nil {
 			return nil, "", err
 		}
@@ -261,11 +335,7 @@ func (r *GuestRepository) CheckIn(ctx context.Context, qrToken string, userID in
 	}
 	if rows == 0 {
 		var checked models.GuestWithChecker
-		fetchQuery := `
-			SELECT g.*, u.email AS checked_in_by_email
-			FROM guests g
-			LEFT JOIN users u ON g.checked_in_by = u.id
-			WHERE g.id = $1`
+		fetchQuery := guestSelectBase + ` WHERE g.id = $1`
 		if err := tx.GetContext(ctx, &checked, fetchQuery, guest.ID); err != nil {
 			return nil, "", err
 		}
@@ -276,11 +346,7 @@ func (r *GuestRepository) CheckIn(ctx context.Context, qrToken string, userID in
 	}
 
 	var updated models.GuestWithChecker
-	fetchQuery := `
-		SELECT g.*, u.email AS checked_in_by_email
-		FROM guests g
-		LEFT JOIN users u ON g.checked_in_by = u.id
-		WHERE g.id = $1`
+	fetchQuery := guestSelectBase + ` WHERE g.id = $1`
 	if err := tx.GetContext(ctx, &updated, fetchQuery, guest.ID); err != nil {
 		return nil, "", err
 	}
@@ -415,6 +481,33 @@ func (r *AnalyticsRepository) HourlyEntryCount(ctx context.Context) ([]struct {
 		FROM guests
 		WHERE is_checked_in = TRUE AND checked_in_at IS NOT NULL
 		GROUP BY hour ORDER BY hour`
+	err := r.db.SelectContext(ctx, &results, query)
+	return results, err
+}
+
+func (r *AnalyticsRepository) LeaderGuestStats(ctx context.Context) ([]struct {
+	UserID      int64  `db:"user_id"`
+	Email       string `db:"email"`
+	DisplayName *string `db:"display_name"`
+	TotalGuests int64  `db:"total_guests"`
+	CheckedIn   int64  `db:"checked_in"`
+}, error) {
+	var results []struct {
+		UserID      int64  `db:"user_id"`
+		Email       string `db:"email"`
+		DisplayName *string `db:"display_name"`
+		TotalGuests int64  `db:"total_guests"`
+		CheckedIn   int64  `db:"checked_in"`
+	}
+	query := `
+		SELECT u.id AS user_id, u.email, u.display_name,
+			COUNT(g.id) AS total_guests,
+			COUNT(g.id) FILTER (WHERE g.is_checked_in = TRUE) AS checked_in
+		FROM users u
+		LEFT JOIN guests g ON g.created_by = u.id
+		WHERE u.role = 'leader'
+		GROUP BY u.id, u.email, u.display_name
+		ORDER BY total_guests DESC`
 	err := r.db.SelectContext(ctx, &results, query)
 	return results, err
 }
