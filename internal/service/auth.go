@@ -75,11 +75,7 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest, ip string
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    int64(s.jwt.AccessExpiry().Seconds()),
-		User: dto.UserResponse{
-			ID:    user.ID,
-			Email: user.Email,
-			Role:  string(user.Role),
-		},
+		User:         userToResponse(user),
 	}, nil
 }
 
@@ -119,12 +115,17 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*dto.Au
 		AccessToken:  accessToken,
 		RefreshToken: newRefresh,
 		ExpiresIn:    int64(s.jwt.AccessExpiry().Seconds()),
-		User: dto.UserResponse{
-			ID:    user.ID,
-			Email: user.Email,
-			Role:  string(user.Role),
-		},
+		User:         userToResponse(user),
 	}, nil
+}
+
+func userToResponse(user *models.User) dto.UserResponse {
+	return dto.UserResponse{
+		ID:           user.ID,
+		Email:        user.Email,
+		Role:         string(user.Role),
+		AssignedGate: user.AssignedGate,
+	}
 }
 
 type CoordinatorService struct {

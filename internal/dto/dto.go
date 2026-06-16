@@ -23,9 +23,10 @@ type AuthResponse struct {
 }
 
 type UserResponse struct {
-	ID    int64  `json:"id"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	ID           int64   `json:"id"`
+	Email        string  `json:"email"`
+	Role         string  `json:"role"`
+	AssignedGate *string `json:"assigned_gate,omitempty"`
 }
 
 type CreateCoordinatorRequest struct {

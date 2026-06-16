@@ -255,9 +255,12 @@ func (s *GuestService) DeleteAll(ctx context.Context, userID int64, role models.
 
 func (s *GuestService) GetRegistry(ctx context.Context, userID int64, role models.UserRole) ([]dto.GuestRegistryEntry, error) {
 	var creatorID *int64
-	if role == models.RoleLeader {
+	switch role {
+	case models.RoleLeader:
 		creatorID = &userID
-	} else if role != models.RoleMaster {
+	case models.RoleMaster, models.RoleCoordinator:
+		// full guest list
+	default:
 		return nil, ErrForbiddenAction
 	}
 
