@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -103,7 +104,7 @@ func Load() (*Config, error) {
 		},
 		Storage: StorageConfig{
 			QRImagePath: getEnv("QR_IMAGE_PATH", "./storage/qr"),
-			QRImageURL:  getEnv("QR_IMAGE_URL", "http://localhost:8080/storage/qr"),
+			QRImageURL:  resolveQRImageURL(getEnv("QR_IMAGE_URL", ""), getEnv("SERVER_BASE_URL", "http://localhost:8080")),
 		},
 		RateLimit: RateLimitConfig{
 			RequestsPerMinute: getEnvInt("RATE_LIMIT_RPM", 100),
@@ -155,4 +156,16 @@ func splitCSV(s string) []string {
 		}
 	}
 	return result
+}
+
+func resolveQRImageURL(qrImageURL, serverBaseURL string) string {
+	qrImageURL = strings.TrimSpace(qrImageURL)
+	if qrImageURL != "" && !strings.Contains(qrImageURL, "localhost") {
+		return strings.TrimRight(qrImageURL, "/")
+	}
+	base := strings.TrimRight(strings.TrimSpace(serverBaseURL), "/")
+	if base == "" {
+		base = "http://localhost:8080"
+	}
+	return base + "/storage/qr"
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"database/sql"
 
 	"github.com/sameetpatro/go-qr-auth/internal/audit"
 	"github.com/sameetpatro/go-qr-auth/internal/dto"
@@ -152,6 +153,20 @@ func (s *LeaderService) ResetPassword(ctx context.Context, masterID, leaderID in
 		fmt.Sprintf("Reset password for leader %s", user.Email), ip)
 
 	return &dto.ResetPasswordResponse{Email: user.Email, NewPassword: plainPassword}, nil
+}
+
+func (s *LeaderService) Delete(ctx context.Context, masterID, leaderID int64, ip string) (*dto.DeleteLeaderResult, error) {
+	guestsDeleted, err := s.users.DeleteLeader(ctx, leaderID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrLeaderNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	role := models.RoleMaster
+	s.audit.Log(ctx, &masterID, &role, models.AuditDeleteLeader,
+		fmt.Sprintf("Deleted leader ID %d and %d guests", leaderID, guestsDeleted), ip)
+	return &dto.DeleteLeaderResult{LeaderID: leaderID, GuestsDeleted: guestsDeleted}, nil
 }
 
 func leaderUsername(email string) string {

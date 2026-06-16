@@ -54,12 +54,12 @@ func (r *UserRepository) NextCoordinatorNumber(ctx context.Context) (int, error)
 
 func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	query := `
-		INSERT INTO users (email, password_hash, role, is_active, display_name, coordinator_number, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO users (email, password_hash, role, is_active, display_name, coordinator_number, assigned_gate, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, created_at, updated_at`
 	return r.db.QueryRowxContext(ctx, query,
 		user.Email, user.PasswordHash, user.Role, user.IsActive,
-		user.DisplayName, user.CoordinatorNumber, user.CreatedBy,
+		user.DisplayName, user.CoordinatorNumber, user.AssignedGate, user.CreatedBy,
 	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
 }
 
@@ -109,6 +109,48 @@ func (r *UserRepository) GuestCountsForLeader(ctx context.Context, leaderID int6
 	err = r.db.GetContext(ctx, &checkedIn,
 		`SELECT COUNT(*) FROM guests WHERE created_by = $1 AND is_checked_in = TRUE`, leaderID)
 	return total, checkedIn, err
+}
+
+// DeleteLeader removes a leader and all associated guests, scan attempts, and refresh tokens.
+func (r *UserRepository) DeleteLeader(ctx context.Context, leaderID int64) (guestsDeleted int64, err error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var role models.UserRole
+	if err := tx.GetContext(ctx, &role, `SELECT role FROM users WHERE id = $1`, leaderID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, sql.ErrNoRows
+		}
+		return 0, err
+	}
+	if role != models.RoleLeader {
+		return 0, sql.ErrNoRows
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM scan_attempts WHERE guest_id IN (SELECT id FROM guests WHERE created_by = $1)`,
+		leaderID); err != nil {
+		return 0, err
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM guests WHERE created_by = $1`, leaderID)
+	if err != nil {
+		return 0, err
+	}
+	guestsDeleted, _ = result.RowsAffected()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM refresh_tokens WHERE user_id = $1`, leaderID); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = $1 AND role = 'leader'`, leaderID); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return guestsDeleted, nil
 }
 
 type GuestRepository struct {
@@ -196,6 +238,140 @@ func (r *GuestRepository) Delete(ctx context.Context, id int64) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (r *GuestRepository) DeleteAllByCreator(ctx context.Context, creatorID int64) (int64, error) {
+	if _, err := r.db.ExecContext(ctx,
+		`DELETE FROM scan_attempts WHERE guest_id IN (SELECT id FROM guests WHERE created_by = $1)`,
+		creatorID); err != nil {
+		return 0, err
+	}
+	result, err := r.db.ExecContext(ctx, `DELETE FROM guests WHERE created_by = $1`, creatorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func (r *GuestRepository) ListByCreator(ctx context.Context, creatorID int64, limit, offset int) ([]models.GuestWithChecker, int64, error) {
+	var total int64
+	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM guests WHERE created_by = $1`, creatorID); err != nil {
+		return nil, 0, err
+	}
+	query := guestSelectBase + `
+		WHERE g.created_by = $1
+		ORDER BY g.created_at DESC
+		LIMIT $2 OFFSET $3`
+	var guests []models.GuestWithChecker
+	if err := r.db.SelectContext(ctx, &guests, query, creatorID, limit, offset); err != nil {
+		return nil, 0, err
+	}
+	return guests, total, nil
+}
+
+func (r *GuestRepository) SearchByCreator(ctx context.Context, creatorID int64, query string, limit, offset int) ([]models.GuestWithChecker, int64, error) {
+	pattern := "%" + strings.TrimSpace(query) + "%"
+	countQuery := `
+		SELECT COUNT(*) FROM guests
+		WHERE created_by = $1 AND (
+			name ILIKE $2 OR phone_number ILIKE $2 OR email ILIKE $2
+			OR metadata->>'address' ILIKE $2 OR metadata->>'college' ILIKE $2
+		)`
+	var total int64
+	if err := r.db.GetContext(ctx, &total, countQuery, creatorID, pattern); err != nil {
+		return nil, 0, err
+	}
+	selectQuery := guestSelectBase + `
+		WHERE g.created_by = $1 AND (
+			g.name ILIKE $2 OR g.phone_number ILIKE $2 OR g.email ILIKE $2
+			OR g.metadata->>'address' ILIKE $2 OR g.metadata->>'college' ILIKE $2
+		)
+		ORDER BY g.name ASC
+		LIMIT $3 OFFSET $4`
+	var guests []models.GuestWithChecker
+	if err := r.db.SelectContext(ctx, &guests, selectQuery, creatorID, pattern, limit, offset); err != nil {
+		return nil, 0, err
+	}
+	return guests, total, nil
+}
+
+type GuestRegistryRow struct {
+	models.GuestWithChecker
+	CheckInGate *string `db:"check_in_gate"`
+}
+
+func (r *GuestRepository) ListRegistry(ctx context.Context, creatorID *int64) ([]GuestRegistryRow, error) {
+	query := `
+		SELECT g.*, u.email AS checked_in_by_email, creator.email AS created_by_email,
+			(SELECT sa.gate_name FROM scan_attempts sa
+			 WHERE sa.guest_id = g.id AND sa.result = 'ENTRY_ALLOWED'
+			 ORDER BY sa.created_at ASC LIMIT 1) AS check_in_gate
+		FROM guests g
+		LEFT JOIN users u ON g.checked_in_by = u.id
+		LEFT JOIN users creator ON g.created_by = creator.id`
+	args := []interface{}{}
+	if creatorID != nil {
+		query += ` WHERE g.created_by = $1`
+		args = append(args, *creatorID)
+	}
+	query += ` ORDER BY g.is_checked_in DESC, g.checked_in_at DESC NULLS LAST, g.name ASC`
+	var rows []GuestRegistryRow
+	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *GuestRepository) ManualCheckIn(ctx context.Context, guestID, userID int64, gateName *string) (*models.GuestWithChecker, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var guest models.Guest
+	if err := tx.GetContext(ctx, &guest, `SELECT * FROM guests WHERE id = $1 FOR UPDATE`, guestID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sql.ErrNoRows
+		}
+		return nil, err
+	}
+	if guest.IsCheckedIn {
+		var existing models.GuestWithChecker
+		if err := tx.GetContext(ctx, &existing, guestSelectBase+` WHERE g.id = $1`, guestID); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return &existing, nil
+	}
+
+	now := time.Now().UTC()
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE guests SET is_checked_in = TRUE, checked_in_at = $1, checked_in_by = $2, updated_at = NOW() WHERE id = $3`,
+		now, userID, guestID); err != nil {
+		return nil, err
+	}
+
+	gate := "Manual"
+	if gateName != nil && strings.TrimSpace(*gateName) != "" {
+		gate = strings.TrimSpace(*gateName)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO scan_attempts (guest_id, user_id, result, gate_name) VALUES ($1, $2, 'ENTRY_ALLOWED', $3)`,
+		guestID, userID, gate); err != nil {
+		return nil, err
+	}
+
+	var updated models.GuestWithChecker
+	if err := tx.GetContext(ctx, &updated, guestSelectBase+` WHERE g.id = $1`, guestID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &updated, nil
 }
 
 func (r *GuestRepository) Search(ctx context.Context, query string, limit, offset int) ([]models.GuestWithChecker, int64, error) {

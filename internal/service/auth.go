@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -135,7 +136,11 @@ func NewCoordinatorService(users *repository.UserRepository, audit *audit.Servic
 	return &CoordinatorService{users: users, audit: audit}
 }
 
-func (s *CoordinatorService) Create(ctx context.Context, creatorID int64, creatorRole models.UserRole, ip string) (*dto.CreateCoordinatorResponse, error) {
+func (s *CoordinatorService) Create(ctx context.Context, creatorID int64, creatorRole models.UserRole, req dto.CreateCoordinatorRequest, ip string) (*dto.CreateCoordinatorResponse, error) {
+	if creatorRole != models.RoleMaster {
+		return nil, ErrForbiddenAction
+	}
+
 	num, err := s.users.NextCoordinatorNumber(ctx)
 	if err != nil {
 		return nil, err
@@ -152,12 +157,18 @@ func (s *CoordinatorService) Create(ctx context.Context, creatorID int64, creato
 
 	email := fmt.Sprintf("coordinator%d@event.app", num)
 	coordNum := num
+	var assignedGate *string
+	if req.GateName != nil && strings.TrimSpace(*req.GateName) != "" {
+		gate := strings.TrimSpace(*req.GateName)
+		assignedGate = &gate
+	}
 	user := &models.User{
 		Email:             email,
 		PasswordHash:      hash,
 		Role:              models.RoleCoordinator,
 		IsActive:          true,
 		CoordinatorNumber: &coordNum,
+		AssignedGate:      assignedGate,
 		CreatedBy:         &creatorID,
 	}
 	if err := s.users.Create(ctx, user); err != nil {
@@ -168,10 +179,11 @@ func (s *CoordinatorService) Create(ctx context.Context, creatorID int64, creato
 		fmt.Sprintf("Created coordinator %s", email), ip)
 
 	return &dto.CreateCoordinatorResponse{
-		ID:       user.ID,
-		Email:    email,
-		Password: plainPassword,
-		Role:     string(models.RoleCoordinator),
+		ID:           user.ID,
+		Email:        email,
+		Password:     plainPassword,
+		Role:         string(models.RoleCoordinator),
+		AssignedGate: assignedGate,
 	}, nil
 }
 
@@ -187,6 +199,7 @@ func (s *CoordinatorService) List(ctx context.Context) ([]dto.CoordinatorRespons
 			Email:             u.Email,
 			IsActive:          u.IsActive,
 			CoordinatorNumber: u.CoordinatorNumber,
+			AssignedGate:      u.AssignedGate,
 			CreatedAt:         u.CreatedAt,
 		}
 	}
@@ -194,6 +207,9 @@ func (s *CoordinatorService) List(ctx context.Context) ([]dto.CoordinatorRespons
 }
 
 func (s *CoordinatorService) Disable(ctx context.Context, actorID int64, actorRole models.UserRole, coordinatorID int64, ip string) error {
+	if actorRole != models.RoleMaster {
+		return ErrForbiddenAction
+	}
 	if err := s.users.SetActive(ctx, coordinatorID, models.RoleCoordinator, false); err != nil {
 		return err
 	}
@@ -203,6 +219,9 @@ func (s *CoordinatorService) Disable(ctx context.Context, actorID int64, actorRo
 }
 
 func (s *CoordinatorService) ResetPassword(ctx context.Context, actorID int64, actorRole models.UserRole, coordinatorID int64, ip string) (*dto.ResetPasswordResponse, error) {
+	if actorRole != models.RoleMaster {
+		return nil, ErrForbiddenAction
+	}
 	user, err := s.users.FindByID(ctx, coordinatorID)
 	if err != nil {
 		return nil, err
@@ -243,6 +262,8 @@ type GuestService struct {
 type QRGenerator interface {
 	SignToken(guestUUID uuid.UUID) string
 	GenerateGuestQR(input qr.GuestQRInput) (token, imageURL string, err error)
+	RenderGuestQRPNG(input qr.GuestQRInput, token string) ([]byte, error)
+	RegenerateCard(input qr.GuestQRInput, token string) (imageURL string, err error)
 }
 
 type NotificationSender interface {

@@ -220,7 +220,131 @@ func (s *GuestService) Delete(ctx context.Context, id int64, userID int64, role 
 	return nil
 }
 
-func (s *GuestService) GetByID(ctx context.Context, id int64) (*dto.GuestResponse, error) {
+func (s *GuestService) DeleteAll(ctx context.Context, userID int64, role models.UserRole, leaderID *int64, ip string) (*dto.BulkDeleteResult, error) {
+	var ownerID int64
+	switch role {
+	case models.RoleLeader:
+		ownerID = userID
+	case models.RoleMaster:
+		if leaderID == nil || *leaderID <= 0 {
+			return nil, fmt.Errorf("leader_id is required when deleting guests as master")
+		}
+		user, err := s.users.FindByID(ctx, *leaderID)
+		if err != nil {
+			return nil, err
+		}
+		if user == nil || user.Role != models.RoleLeader {
+			return nil, fmt.Errorf("invalid leader_id")
+		}
+		ownerID = *leaderID
+	default:
+		return nil, ErrForbiddenAction
+	}
+
+	deleted, err := s.guests.DeleteAllByCreator(ctx, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	s.audit.Log(ctx, &userID, &role, models.AuditBulkDeleteGuests,
+		fmt.Sprintf("Bulk deleted %d guests for leader ID %d", deleted, ownerID), ip)
+	if s.ws != nil {
+		s.ws.BroadcastDashboardUpdated()
+	}
+	return &dto.BulkDeleteResult{Deleted: deleted}, nil
+}
+
+func (s *GuestService) GetRegistry(ctx context.Context, userID int64, role models.UserRole) ([]dto.GuestRegistryEntry, error) {
+	var creatorID *int64
+	if role == models.RoleLeader {
+		creatorID = &userID
+	} else if role != models.RoleMaster {
+		return nil, ErrForbiddenAction
+	}
+
+	rows, err := s.guests.ListRegistry(ctx, creatorID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]dto.GuestRegistryEntry, len(rows))
+	for i, row := range rows {
+		result[i] = dto.GuestRegistryEntry{
+			GuestResponse: toGuestResponse(&row.GuestWithChecker),
+			CheckInGate:   row.CheckInGate,
+		}
+	}
+	return result, nil
+}
+
+func (s *GuestService) GetQRImage(ctx context.Context, id int64, userID int64, role models.UserRole) ([]byte, string, error) {
+	guest, err := s.guests.FindByID(ctx, id)
+	if err != nil {
+		return nil, "", err
+	}
+	if guest == nil {
+		return nil, "", sql.ErrNoRows
+	}
+	if role == models.RoleLeader {
+		if guest.CreatedBy == nil || *guest.CreatedBy != userID {
+			return nil, "", ErrForbiddenAction
+		}
+	} else if role != models.RoleMaster {
+		return nil, "", ErrForbiddenAction
+	}
+
+	meta := qr.RawMetadata(guest.Metadata)
+	address, college := qr.MetadataAddressCollege(meta)
+	input := qr.GuestQRInput{
+		UUID:     guest.UUID,
+		GuestID:  guest.ID,
+		Name:     guest.Name,
+		Phone:    guest.PhoneNumber,
+		Email:    guest.Email,
+		Address:  address,
+		College:  college,
+		Metadata: meta,
+	}
+
+	png, err := s.qr.RenderGuestQRPNG(input, guest.QRToken)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if imageURL, err := s.qr.RegenerateCard(input, guest.QRToken); err == nil && imageURL != "" {
+		_ = s.guests.UpdateQRImage(ctx, guest.ID, imageURL)
+	}
+
+	filename := fmt.Sprintf("%s_%d.png", qr.SanitizeFilename(guest.Name), guest.ID)
+	return png, filename, nil
+}
+
+func (s *GuestService) ManualCheckIn(ctx context.Context, guestID int64, userID int64, role models.UserRole, req dto.ManualCheckInRequest, ip string) (*dto.GuestResponse, error) {
+	if role != models.RoleMaster {
+		return nil, ErrForbiddenAction
+	}
+
+	existing, err := s.guests.FindByID(ctx, guestID)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, sql.ErrNoRows
+	}
+
+	updated, err := s.guests.ManualCheckIn(ctx, guestID, userID, req.GateName)
+	if err != nil {
+		return nil, err
+	}
+
+	s.audit.Log(ctx, &userID, &role, models.AuditManualCheckIn,
+		fmt.Sprintf("Manual check-in for guest ID %d", guestID), ip)
+	if s.ws != nil {
+		s.ws.BroadcastDashboardUpdated()
+	}
+	resp := toGuestResponse(updated)
+	return &resp, nil
+}
+
+func (s *GuestService) GetByID(ctx context.Context, id int64, userID int64, role models.UserRole) (*dto.GuestResponse, error) {
 	guest, err := s.guests.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -228,11 +352,16 @@ func (s *GuestService) GetByID(ctx context.Context, id int64) (*dto.GuestRespons
 	if guest == nil {
 		return nil, sql.ErrNoRows
 	}
+	if role == models.RoleLeader {
+		if guest.CreatedBy == nil || *guest.CreatedBy != userID {
+			return nil, ErrForbiddenAction
+		}
+	}
 	resp := toGuestResponse(guest)
 	return &resp, nil
 }
 
-func (s *GuestService) Search(ctx context.Context, query string, page, perPage int) (*dto.PaginatedGuestsResponse, error) {
+func (s *GuestService) Search(ctx context.Context, query string, page, perPage int, userID int64, role models.UserRole) (*dto.PaginatedGuestsResponse, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -241,7 +370,14 @@ func (s *GuestService) Search(ctx context.Context, query string, page, perPage i
 	}
 	offset := (page - 1) * perPage
 
-	guests, total, err := s.guests.Search(ctx, query, perPage, offset)
+	var guests []models.GuestWithChecker
+	var total int64
+	var err error
+	if role == models.RoleLeader {
+		guests, total, err = s.guests.SearchByCreator(ctx, userID, query, perPage, offset)
+	} else {
+		guests, total, err = s.guests.Search(ctx, query, perPage, offset)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +400,7 @@ func (s *GuestService) Search(ctx context.Context, query string, page, perPage i
 	}, nil
 }
 
-func (s *GuestService) List(ctx context.Context, page, perPage int) (*dto.PaginatedGuestsResponse, error) {
+func (s *GuestService) List(ctx context.Context, page, perPage int, userID int64, role models.UserRole) (*dto.PaginatedGuestsResponse, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -273,7 +409,14 @@ func (s *GuestService) List(ctx context.Context, page, perPage int) (*dto.Pagina
 	}
 	offset := (page - 1) * perPage
 
-	guests, total, err := s.guests.List(ctx, perPage, offset)
+	var guests []models.GuestWithChecker
+	var total int64
+	var err error
+	if role == models.RoleLeader {
+		guests, total, err = s.guests.ListByCreator(ctx, userID, perPage, offset)
+	} else {
+		guests, total, err = s.guests.List(ctx, perPage, offset)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -296,8 +439,14 @@ func (s *GuestService) List(ctx context.Context, page, perPage int) (*dto.Pagina
 	}, nil
 }
 
-func (s *GuestService) SearchForVerification(ctx context.Context, query string) ([]dto.GuestSearchResponse, error) {
-	guests, _, err := s.guests.Search(ctx, query, 50, 0)
+func (s *GuestService) SearchForVerification(ctx context.Context, query string, userID int64, role models.UserRole) ([]dto.GuestSearchResponse, error) {
+	var guests []models.GuestWithChecker
+	var err error
+	if role == models.RoleLeader {
+		guests, _, err = s.guests.SearchByCreator(ctx, userID, query, 50, 0)
+	} else {
+		guests, _, err = s.guests.Search(ctx, query, 50, 0)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +521,7 @@ func (s *GuestService) InviteAll(ctx context.Context, userID int64, role models.
 		return nil, ErrForbiddenAction
 	}
 
-	guests, _, err := s.guests.List(ctx, 100000, 0)
+	guests, _, err := s.guests.ListByCreator(ctx, userID, 100000, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -426,13 +575,14 @@ func (s *GuestService) InviteAll(ctx context.Context, userID int64, role models.
 
 func toGuestResponse(g *models.GuestWithChecker) dto.GuestResponse {
 	metadata := qr.RawMetadata(g.Metadata)
+	qrURL := guestQRImageURL(g.ID)
 	return dto.GuestResponse{
 		ID:               g.ID,
 		UUID:             g.UUID,
 		Name:             g.Name,
 		PhoneNumber:      g.PhoneNumber,
 		Email:            g.Email,
-		QRImageURL:       g.QRImageURL,
+		QRImageURL:       &qrURL,
 		IsCheckedIn:      g.IsCheckedIn,
 		CheckedInAt:      g.CheckedInAt,
 		CheckedInBy:      g.CheckedInBy,

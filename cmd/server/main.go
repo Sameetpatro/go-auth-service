@@ -77,6 +77,7 @@ func main() {
 	coordinatorService := service.NewCoordinatorService(userRepo, auditService)
 	leaderService := service.NewLeaderService(userRepo, auditService)
 	guestService := service.NewGuestService(guestRepo, userRepo, qrService, notificationService, cfg.Event, auditService, wsBroadcaster)
+	service.SetAPIBaseURL(cfg.Server.BaseURL)
 	scanService := service.NewScanService(guestRepo, scanRepo, auditService, wsBroadcaster)
 	analyticsService := service.NewAnalyticsService(analyticsRepo)
 	insightsService := service.NewInsightsService(analyticsRepo)

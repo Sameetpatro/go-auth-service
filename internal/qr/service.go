@@ -44,6 +44,11 @@ func (s *Service) SignToken(guestUUID uuid.UUID) string {
 	return s.signToken(guestUUID.String())
 }
 
+func (s *Service) RenderGuestQRPNG(input GuestQRInput, token string) ([]byte, error) {
+	info := s.buildCardInfo(input)
+	return renderInvitationCard(token, info)
+}
+
 func (s *Service) GenerateGuestQR(input GuestQRInput) (token string, imageURL string, err error) {
 	token = s.signToken(input.UUID.String())
 

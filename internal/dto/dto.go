@@ -28,11 +28,16 @@ type UserResponse struct {
 	Role  string `json:"role"`
 }
 
+type CreateCoordinatorRequest struct {
+	GateName *string `json:"gate_name,omitempty"`
+}
+
 type CreateCoordinatorResponse struct {
-	ID       int64  `json:"id"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Role     string `json:"role"`
+	ID           int64   `json:"id"`
+	Email        string  `json:"email"`
+	Password     string  `json:"password"`
+	Role         string  `json:"role"`
+	AssignedGate *string `json:"assigned_gate,omitempty"`
 }
 
 type CreateLeaderRequest struct {
@@ -64,6 +69,7 @@ type CoordinatorResponse struct {
 	Email             string    `json:"email"`
 	IsActive          bool      `json:"is_active"`
 	CoordinatorNumber *int      `json:"coordinator_number,omitempty"`
+	AssignedGate      *string   `json:"assigned_gate,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`
 }
 
@@ -234,4 +240,22 @@ type PaginationMeta struct {
 type PaginatedGuestsResponse struct {
 	Data []GuestResponse `json:"data"`
 	Meta PaginationMeta  `json:"meta"`
+}
+
+type GuestRegistryEntry struct {
+	GuestResponse
+	CheckInGate *string `json:"check_in_gate,omitempty"`
+}
+
+type BulkDeleteResult struct {
+	Deleted int64 `json:"deleted"`
+}
+
+type ManualCheckInRequest struct {
+	GateName *string `json:"gate_name,omitempty"`
+}
+
+type DeleteLeaderResult struct {
+	LeaderID      int64 `json:"leader_id"`
+	GuestsDeleted int64 `json:"guests_deleted"`
 }

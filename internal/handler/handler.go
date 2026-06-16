@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -86,6 +87,7 @@ type CoordinatorHandler struct {
 
 type CoordinatorBroadcaster interface {
 	BroadcastCoordinatorCreated(data interface{})
+	BroadcastDashboardUpdated()
 }
 
 func NewCoordinatorHandler(coordinators *service.CoordinatorService, ws CoordinatorBroadcaster) *CoordinatorHandler {
@@ -100,7 +102,13 @@ func NewCoordinatorHandler(coordinators *service.CoordinatorService, ws Coordina
 // @Success 201 {object} dto.CreateCoordinatorResponse
 // @Router /api/v1/coordinators [post]
 func (h *CoordinatorHandler) Create(c *gin.Context) {
-	resp, err := h.coordinators.Create(c.Request.Context(), middleware.GetUserID(c), middleware.GetRole(c), middleware.GetClientIP(c))
+	var req dto.CreateCoordinatorRequest
+	_ = c.ShouldBindJSON(&req)
+	resp, err := h.coordinators.Create(c.Request.Context(), middleware.GetUserID(c), middleware.GetRole(c), req, middleware.GetClientIP(c))
+	if errors.Is(err, service.ErrForbiddenAction) {
+		response.Forbidden(c, "Only master can create coordinators")
+		return
+	}
 	if err != nil {
 		response.InternalError(c, "Failed to create coordinator")
 		return
@@ -141,6 +149,10 @@ func (h *CoordinatorHandler) Disable(c *gin.Context) {
 		return
 	}
 	if err := h.coordinators.Disable(c.Request.Context(), middleware.GetUserID(c), middleware.GetRole(c), id, middleware.GetClientIP(c)); err != nil {
+		if errors.Is(err, service.ErrForbiddenAction) {
+			response.Forbidden(c, "Only master can disable coordinators")
+			return
+		}
 		response.InternalError(c, "Failed to disable coordinator")
 		return
 	}
@@ -161,6 +173,10 @@ func (h *CoordinatorHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 	resp, err := h.coordinators.ResetPassword(c.Request.Context(), middleware.GetUserID(c), middleware.GetRole(c), id, middleware.GetClientIP(c))
+	if errors.Is(err, service.ErrForbiddenAction) {
+		response.Forbidden(c, "Only master can reset coordinator passwords")
+		return
+	}
 	if err != nil {
 		response.NotFound(c, "Coordinator not found")
 		return
@@ -246,6 +262,27 @@ func (h *LeaderHandler) ResetPassword(c *gin.Context) {
 	response.Success(c, "Password reset", resp)
 }
 
+func (h *LeaderHandler) Delete(c *gin.Context) {
+	id, err := parseID(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid leader ID")
+		return
+	}
+	resp, err := h.leaders.Delete(c.Request.Context(), middleware.GetUserID(c), id, middleware.GetClientIP(c))
+	if errors.Is(err, service.ErrLeaderNotFound) {
+		response.NotFound(c, "Leader not found")
+		return
+	}
+	if err != nil {
+		response.InternalError(c, "Failed to delete leader")
+		return
+	}
+	if h.ws != nil {
+		h.ws.BroadcastDashboardUpdated()
+	}
+	response.Success(c, "Leader and all associated guests deleted", resp)
+}
+
 type GuestHandler struct {
 	guests *service.GuestService
 }
@@ -296,7 +333,7 @@ func (h *GuestHandler) Create(c *gin.Context) {
 // @Router /api/v1/guests [get]
 func (h *GuestHandler) List(c *gin.Context) {
 	page, perPage := pagination(c)
-	resp, err := h.guests.List(c.Request.Context(), page, perPage)
+	resp, err := h.guests.List(c.Request.Context(), page, perPage, middleware.GetUserID(c), middleware.GetRole(c))
 	if err != nil {
 		response.InternalError(c, "Failed to list guests")
 		return
@@ -317,7 +354,11 @@ func (h *GuestHandler) Get(c *gin.Context) {
 		response.BadRequest(c, "Invalid guest ID")
 		return
 	}
-	resp, err := h.guests.GetByID(c.Request.Context(), id)
+	resp, err := h.guests.GetByID(c.Request.Context(), id, middleware.GetUserID(c), middleware.GetRole(c))
+	if errors.Is(err, service.ErrForbiddenAction) {
+		response.Forbidden(c, "Insufficient permissions")
+		return
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		response.NotFound(c, "Guest not found")
 		return
@@ -389,6 +430,29 @@ func (h *GuestHandler) Delete(c *gin.Context) {
 	response.Success(c, "Guest deleted", nil)
 }
 
+func (h *GuestHandler) GetQRImage(c *gin.Context) {
+	id, err := parseID(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid guest ID")
+		return
+	}
+	data, filename, err := h.guests.GetQRImage(c.Request.Context(), id, middleware.GetUserID(c), middleware.GetRole(c))
+	if errors.Is(err, service.ErrForbiddenAction) {
+		response.Forbidden(c, "Insufficient permissions")
+		return
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		response.NotFound(c, "Guest not found")
+		return
+	}
+	if err != nil {
+		response.InternalError(c, "Failed to generate QR image")
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=%q", filename))
+	c.Data(http.StatusOK, "image/png", data)
+}
+
 // Search godoc
 // @Summary Search guests
 // @Tags Guests
@@ -405,7 +469,7 @@ func (h *GuestHandler) Search(c *gin.Context) {
 		return
 	}
 	page, perPage := pagination(c)
-	resp, err := h.guests.Search(c.Request.Context(), query, page, perPage)
+	resp, err := h.guests.Search(c.Request.Context(), query, page, perPage, middleware.GetUserID(c), middleware.GetRole(c))
 	if err != nil {
 		response.InternalError(c, "Search failed")
 		return
@@ -426,7 +490,7 @@ func (h *GuestHandler) VerifySearch(c *gin.Context) {
 		response.BadRequest(c, "Search query is required")
 		return
 	}
-	resp, err := h.guests.SearchForVerification(c.Request.Context(), query)
+	resp, err := h.guests.SearchForVerification(c.Request.Context(), query, middleware.GetUserID(c), middleware.GetRole(c))
 	if err != nil {
 		response.InternalError(c, "Verification search failed")
 		return
@@ -473,6 +537,65 @@ func (h *GuestHandler) Import(c *gin.Context) {
 		return
 	}
 	response.Success(c, "Import completed", resp)
+}
+
+func (h *GuestHandler) Registry(c *gin.Context) {
+	resp, err := h.guests.GetRegistry(c.Request.Context(), middleware.GetUserID(c), middleware.GetRole(c))
+	if errors.Is(err, service.ErrForbiddenAction) {
+		response.Forbidden(c, "Insufficient permissions")
+		return
+	}
+	if err != nil {
+		response.InternalError(c, "Failed to load guest registry")
+		return
+	}
+	response.Success(c, "Guest registry retrieved", resp)
+}
+
+func (h *GuestHandler) DeleteAll(c *gin.Context) {
+	var leaderID *int64
+	if lid := c.Query("leader_id"); lid != "" {
+		id, err := strconv.ParseInt(lid, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid leader_id")
+			return
+		}
+		leaderID = &id
+	}
+	resp, err := h.guests.DeleteAll(c.Request.Context(), middleware.GetUserID(c), middleware.GetRole(c), leaderID, middleware.GetClientIP(c))
+	if errors.Is(err, service.ErrForbiddenAction) {
+		response.Forbidden(c, "Insufficient permissions")
+		return
+	}
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, "Guests deleted", resp)
+}
+
+func (h *GuestHandler) ManualCheckIn(c *gin.Context) {
+	id, err := parseID(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid guest ID")
+		return
+	}
+	var req dto.ManualCheckInRequest
+	_ = c.ShouldBindJSON(&req)
+	resp, err := h.guests.ManualCheckIn(c.Request.Context(), id, middleware.GetUserID(c), middleware.GetRole(c), req, middleware.GetClientIP(c))
+	if errors.Is(err, service.ErrForbiddenAction) {
+		response.Forbidden(c, "Only master can manually check in guests")
+		return
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		response.NotFound(c, "Guest not found")
+		return
+	}
+	if err != nil {
+		response.InternalError(c, "Failed to check in guest")
+		return
+	}
+	response.Success(c, "Guest checked in", resp)
 }
 
 // InviteAll godoc
@@ -600,6 +723,20 @@ func (h *AnalyticsHandler) ExportPDF(c *gin.Context) {
 	}
 	c.Header("Content-Disposition", "attachment; filename=event_report.pdf")
 	c.Data(http.StatusOK, "application/pdf", data)
+}
+
+func (h *AnalyticsHandler) ExportBackupCSV(c *gin.Context) {
+	if middleware.GetRole(c) != models.RoleMaster {
+		response.Forbidden(c, "Only master can download backup")
+		return
+	}
+	data, err := h.reports.ExportBackupCSV(c.Request.Context(), middleware.GetUserID(c), middleware.GetRole(c), middleware.GetClientIP(c))
+	if err != nil {
+		response.InternalError(c, "Backup export failed")
+		return
+	}
+	c.Header("Content-Disposition", "attachment; filename=guests_backup.csv")
+	c.Data(http.StatusOK, "text/csv", data)
 }
 
 func parseID(c *gin.Context) (int64, error) {

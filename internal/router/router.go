@@ -70,15 +70,15 @@ func Setup(h Handlers) *gin.Engine {
 			{
 				guests.GET("", h.Guest.List)
 				guests.GET("/search", h.Guest.Search)
+				guests.GET("/registry", h.Guest.Registry)
+				guests.GET("/verify", h.Guest.VerifySearch)
+				guests.DELETE("/all", h.Guest.DeleteAll)
+				guests.POST("", h.Guest.Create)
+				guests.POST("/import", h.Guest.Import)
+				guests.GET("/:id/qr-image", h.Guest.GetQRImage)
+				guests.POST("/:id/check-in", h.Guest.ManualCheckIn)
+				guests.DELETE("/:id", h.Guest.Delete)
 				guests.GET("/:id", h.Guest.Get)
-			}
-
-			leaderGuests := protected.Group("/guests")
-			leaderGuests.Use(middleware.RequireRole(models.RoleLeader, models.RoleMaster))
-			{
-				leaderGuests.POST("", h.Guest.Create)
-				leaderGuests.POST("/import", h.Guest.Import)
-				leaderGuests.DELETE("/:id", h.Guest.Delete)
 			}
 
 			leaderOnlyGuests := protected.Group("/guests")
@@ -86,12 +86,6 @@ func Setup(h Handlers) *gin.Engine {
 			{
 				leaderOnlyGuests.POST("/invite-all", h.Guest.InviteAll)
 				leaderOnlyGuests.PUT("/:id", h.Guest.Update)
-			}
-
-			verifyGroup := protected.Group("")
-			verifyGroup.Use(middleware.RequireRole(models.RoleLeader))
-			{
-				verifyGroup.GET("/guests/verify", h.Guest.VerifySearch)
 			}
 
 			analytics := protected.Group("/analytics")
@@ -108,17 +102,22 @@ func Setup(h Handlers) *gin.Engine {
 			reports.GET("/export/csv", h.Analytics.ExportCSV)
 			reports.GET("/export/pdf", h.Analytics.ExportPDF)
 
+			backup := protected.Group("/reports")
+			backup.Use(middleware.RequireRole(models.RoleMaster))
+			backup.GET("/backup/csv", h.Analytics.ExportBackupCSV)
+
 			leaders := protected.Group("/leaders")
 			leaders.Use(middleware.RequireRole(models.RoleMaster))
 			{
 				leaders.POST("", h.Leader.Create)
 				leaders.GET("", h.Leader.List)
+				leaders.DELETE("/:id", h.Leader.Delete)
 				leaders.PATCH("/:id/disable", h.Leader.Disable)
 				leaders.POST("/:id/reset-password", h.Leader.ResetPassword)
 			}
 
 			coordinators := protected.Group("/coordinators")
-			coordinators.Use(middleware.RequireRole(models.RoleMaster, models.RoleLeader))
+			coordinators.Use(middleware.RequireRole(models.RoleMaster))
 			{
 				coordinators.POST("", h.Coordinator.Create)
 				coordinators.GET("", h.Coordinator.List)

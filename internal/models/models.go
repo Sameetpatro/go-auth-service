@@ -23,6 +23,7 @@ type User struct {
 	IsActive          bool       `db:"is_active" json:"is_active"`
 	DisplayName       *string    `db:"display_name" json:"display_name,omitempty"`
 	CoordinatorNumber *int       `db:"coordinator_number" json:"coordinator_number,omitempty"`
+	AssignedGate      *string    `db:"assigned_gate" json:"assigned_gate,omitempty"`
 	CreatedBy         *int64     `db:"created_by" json:"created_by,omitempty"`
 	CreatedAt         time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt         time.Time  `db:"updated_at" json:"updated_at"`
@@ -86,6 +87,9 @@ const (
 	AuditExportReport       AuditAction = "EXPORT_REPORT"
 	AuditImportGuests       AuditAction = "IMPORT_GUESTS"
 	AuditInviteGuests       AuditAction = "INVITE_GUESTS"
+	AuditDeleteLeader       AuditAction = "DELETE_LEADER"
+	AuditManualCheckIn      AuditAction = "MANUAL_CHECK_IN"
+	AuditBulkDeleteGuests   AuditAction = "BULK_DELETE_GUESTS"
 )
 
 type AuditLog struct {
