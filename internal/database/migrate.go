@@ -17,6 +17,7 @@ func RunMigrations(db *sqlx.DB) error {
 	migrations := []string{
 		"migrations/001_initial_schema.up.sql",
 		"migrations/002_roles_and_guest_ownership.up.sql",
+		"migrations/003_coordinator_gate_and_audit.up.sql",
 	}
 
 	for _, path := range migrations {
