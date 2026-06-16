@@ -1,21 +1,26 @@
 name,phone_number,email,address,college
-Aarav Sharma,+919810000001,aarav.sharma.l1@example.com,"12 MG Road, New Delhi",Delhi University
-Priya Verma,+919810000002,priya.verma.l1@example.com,"45 Bandra West, Mumbai",Mumbai University
-Rahul Gupta,+919810000003,rahul.gupta.l1@example.com,"78 Koramangala, Bengaluru",IIT Bengaluru
-Ananya Iyer,+919810000004,ananya.iyer.l1@example.com,"22 Adyar, Chennai",Anna University
-Vikram Singh,+919810000005,vikram.singh.l1@example.com,"9 C-Scheme, Jaipur",Rajasthan University
-Kavya Reddy,+919810000006,kavya.reddy.l1@example.com,"33 Banjara Hills, Hyderabad",Osmania University
-Arjun Mehta,+919810000007,arjun.mehta.l1@example.com,"56 FC Road, Pune",Savitribai Phule Pune University
-Ishita Patel,+919810000008,ishita.patel.l1@example.com,"14 Satellite, Ahmedabad",Gujarat University
-Rohan Joshi,+919810000009,rohan.joshi.l1@example.com,"67 Hazratganj, Lucknow",Lucknow University
-Sneha Nair,+919810000010,sneha.nair.l1@example.com,"88 Marine Drive, Kochi",Cochin University
-Aditya Malhotra,+919810000011,aditya.malhotra.l1@example.com,"3 Sector 17, Chandigarh",Panjab University
-Divya Krishnan,+919810000012,divya.krishnan.l1@example.com,"19 RS Puram, Coimbatore",PSG College
-Karan Desai,+919810000013,karan.desai.l1@example.com,"41 Ring Road, Surat",Veer Narmad South Gujarat University
-Meera Banerjee,+919810000014,meera.banerjee.l1@example.com,"25 Park Street, Kolkata",Jadavpur University
-Siddharth Rao,+919810000015,siddharth.rao.l1@example.com,"72 Arera Colony, Bhopal",Barkatullah University
-Pooja Agarwal,+919810000016,pooja.agarwal.l1@example.com,"11 Vijay Nagar, Indore",Devi Ahilya University
-Nikhil Choudhary,+919810000017,nikhil.choudhary.l1@example.com,"58 Boring Road, Patna",Patna University
-Ritu Saxena,+919810000018,ritu.saxena.l1@example.com,"90 Sector 62, Noida",Amity University
+Aarav Sharma,+919810000001,aarav.sharma.l1@example.com,"12 Connaught Place, New Delhi",Delhi University
+Priya Verma,+919810000002,priya.verma.l1@example.com,"45 Hill Road, Bandra West, Mumbai",Mumbai University
+Rahul Gupta,+919810000003,rahul.gupta.l1@example.com,"78 5th Block, Koramangala, Bengaluru",IISc Bengaluru
+Ananya Iyer,+919810000004,ananya.iyer.l1@example.com,"22 Besant Nagar, Chennai",Anna University
+Vikram Singh,+919810000005,vikram.singh.l1@example.com,"9 MI Road, Jaipur",MNIT Jaipur
+Kavya Reddy,+919810000006,kavya.reddy.l1@example.com,"33 Jubilee Hills, Hyderabad",University of Hyderabad
+Arjun Mehta,+919810000007,arjun.mehta.l1@example.com,"56 Fergusson College Road, Pune",Savitribai Phule Pune University
+Ishita Patel,+919810000008,ishita.patel.l1@example.com,"14 Prahladnagar, Ahmedabad",Nirma University
+Rohan Joshi,+919810000009,rohan.joshi.l1@example.com,"67 Gomti Nagar, Lucknow",IIM Lucknow
+Sneha Nair,+919810000010,sneha.nair.l1@example.com,"88 Panampilly Nagar, Kochi",CUSAT Kochi
+Aditya Malhotra,+919810000011,aditya.malhotra.l1@example.com,"3 Sector 22, Chandigarh",Panjab University
+Divya Krishnan,+919810000012,divya.krishnan.l1@example.com,"19 Avinashi Road, Coimbatore",PSG College of Technology
+Karan Desai,+919810000013,karan.desai.l1@example.com,"41 Athwa Gate, Surat",Sardar Vallabhbhai National Institute of Technology
+Meera Banerjee,+919810000014,meera.banerjee.l1@example.com,"25 Southern Avenue, Kolkata",Presidency University
+Siddharth Rao,+919810000015,siddharth.rao.l1@example.com,"72 Arera Colony, Bhopal",IIT Indore
+Pooja Agarwal,+919810000016,pooja.agarwal.l1@example.com,"11 Vijay Nagar, Indore",IIM Indore
+Nikhil Choudhary,+919810000017,nikhil.choudhary.l1@example.com,"58 Boring Road, Patna",Nalanda University
+Ritu Saxena,+919810000018,ritu.saxena.l1@example.com,"90 Sector 62, Noida",Amity University Noida
 Harsh Trivedi,+919810000019,harsh.trivedi.l1@example.com,"16 Alkapuri, Vadodara",MS University Baroda
-Neha Kapoor,+919810000020,neha.kapoor.l1@example.com,"34 DLF Phase 1, Gurgaon",MDI Gurgaon
+Neha Kapoor,+919810000020,neha.kapoor.l1@example.com,"34 Golf Course Road, Gurgaon",Ashoka University
+Vivek Anand,+919810000021,vivek.anand.l1@example.com,"6 Residency Road, Bengaluru",Christ University
+Sakshi Rawat,+919810000022,sakshi.rawat.l1@example.com,"29 Rajpur Road, Dehradun",Doon University
+Tarun Khanna,+919810000023,tarun.khanna.l1@example.com,"51 Civil Lines, Ludhiana",Punjab Agricultural University
+Ira Mukherjee,+919810000024,ira.mukherjee.l1@example.com,"8 Salt Lake Sector V, Kolkata",IISWBM Kolkata
+Omkar Jadhav,+919810000025,omkar.jadhav.l1@example.com,"73 FC Road, Pune",Symbiosis International University

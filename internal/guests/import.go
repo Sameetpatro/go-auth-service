@@ -69,7 +69,7 @@ func (p *Parser) ParseXLSX(r io.Reader) ([]GuestRow, error) {
 func (p *Parser) parseRecords(headers []string, records [][]string) ([]GuestRow, error) {
 	colMap := make(map[int]string)
 	for i, h := range headers {
-		colMap[i] = normalizeField(strings.TrimSpace(h))
+		colMap[i] = normalizeField(stripBOM(strings.TrimSpace(h)))
 	}
 
 	var guests []GuestRow
@@ -115,9 +115,15 @@ func normalizeField(h string) string {
 	switch h {
 	case "phone", "phonenumber", "phone_no", "mobile":
 		return "phone_number"
+	case "fullname", "guest_name", "guestname":
+		return "name"
 	default:
 		return h
 	}
+}
+
+func stripBOM(s string) string {
+	return strings.TrimPrefix(s, "\ufeff")
 }
 
 func isEmptyRow(record []string) bool {
@@ -146,6 +152,27 @@ func ParseFile(ctx context.Context, filename string, r io.Reader) ([]GuestRow, e
 	case strings.HasSuffix(lower, ".xlsx"), strings.HasSuffix(lower, ".xls"):
 		return parser.ParseXLSX(r)
 	default:
-		return nil, fmt.Errorf("unsupported file format: %s", filename)
+		// Some Android pickers omit the extension; sniff CSV content.
+		data, err := io.ReadAll(r)
+		if err != nil {
+			return nil, err
+		}
+		if looksLikeCSV(data) {
+			return parser.ParseCSV(bytes.NewReader(data))
+		}
+		return nil, fmt.Errorf("unsupported file format: %s (use .csv or .xlsx)", filename)
 	}
+}
+
+func looksLikeCSV(data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+	sample := string(data)
+	if len(sample) > 512 {
+		sample = sample[:512]
+	}
+	sample = strings.ToLower(stripBOM(sample))
+	return strings.Contains(sample, "name") &&
+		(strings.Contains(sample, "phone") || strings.Contains(sample, "email"))
 }
