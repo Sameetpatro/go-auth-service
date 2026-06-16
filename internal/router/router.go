@@ -65,12 +65,19 @@ func Setup(h Handlers) *gin.Engine {
 				scanGroup.POST("/scan", h.Scan.Scan)
 			}
 
+			guestRegistry := protected.Group("/guests")
+			guestRegistry.Use(middleware.RequireRole(
+				models.RoleLeader, models.RoleMaster, models.RoleCoordinator,
+			))
+			{
+				guestRegistry.GET("/registry", h.Guest.Registry)
+			}
+
 			guests := protected.Group("/guests")
 			guests.Use(middleware.RequireRole(models.RoleLeader, models.RoleMaster))
 			{
 				guests.GET("", h.Guest.List)
 				guests.GET("/search", h.Guest.Search)
-				guests.GET("/registry", h.Guest.Registry)
 				guests.GET("/verify", h.Guest.VerifySearch)
 				guests.DELETE("/all", h.Guest.DeleteAll)
 				guests.POST("", h.Guest.Create)
