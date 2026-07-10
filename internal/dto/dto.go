@@ -31,6 +31,8 @@ type UserResponse struct {
 
 type CreateCoordinatorRequest struct {
 	GateName *string `json:"gate_name,omitempty"`
+	// Password is entered by the master; when empty a random one is generated.
+	Password *string `json:"password,omitempty" binding:"omitempty,min=8"`
 }
 
 type CreateCoordinatorResponse struct {

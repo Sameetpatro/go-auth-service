@@ -147,16 +147,24 @@ func (s *CoordinatorService) Create(ctx context.Context, creatorID int64, creato
 		return nil, err
 	}
 
-	plainPassword, err := password.Generate(8)
-	if err != nil {
-		return nil, err
+	var plainPassword string
+	if req.Password != nil && strings.TrimSpace(*req.Password) != "" {
+		plainPassword = strings.TrimSpace(*req.Password)
+		if len(plainPassword) < 8 {
+			return nil, fmt.Errorf("password must be at least 8 characters")
+		}
+	} else {
+		plainPassword, err = password.Generate(8)
+		if err != nil {
+			return nil, err
+		}
 	}
 	hash, err := password.Hash(plainPassword)
 	if err != nil {
 		return nil, err
 	}
 
-	email := fmt.Sprintf("coordinator%d@event.app", num)
+	email := fmt.Sprintf("coordinator%d@coordinator.jms", num)
 	coordNum := num
 	var assignedGate *string
 	if req.GateName != nil && strings.TrimSpace(*req.GateName) != "" {
