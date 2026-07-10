@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -88,7 +89,15 @@ func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuest
 		return nil, err
 	}
 
-	_, imageURL, err := s.qr.GenerateGuestQR(ctx, qr.GuestQRInput{
+	// QR card rendering + Cloudinary upload take ~1s each on small instances;
+	// doing them inline made bulk imports exceed the HTTP write timeout (502s).
+	// Run them in the background — the qr-image endpoint renders on demand and
+	// self-heals qr_image_url, so the guest is usable immediately.
+	phone := ""
+	if req.PhoneNumber != nil {
+		phone = *req.PhoneNumber
+	}
+	go s.generateAndStoreQR(qr.GuestQRInput{
 		UUID:     guestUUID,
 		GuestID:  guest.ID,
 		Name:     req.Name,
@@ -97,19 +106,7 @@ func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuest
 		Address:  address,
 		College:  college,
 		Metadata: meta,
-	})
-	if err == nil && imageURL != "" {
-		guest.QRImageURL = &imageURL
-		_ = s.guests.UpdateQRImage(ctx, guest.ID, imageURL)
-	}
-
-	if req.PhoneNumber != nil && *req.PhoneNumber != "" {
-		phone := *req.PhoneNumber
-		go func() {
-			_ = s.notifications.SendGuestInvitation(context.Background(), req.Name, phone,
-				s.event.Name, s.event.Date, s.event.Location, imageURL)
-		}()
-	}
+	}, phone)
 
 	s.audit.Log(ctx, &actorID, &role, models.AuditCreateGuest,
 		fmt.Sprintf("Created guest %s", req.Name), ip)
@@ -124,6 +121,29 @@ func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuest
 		s.ws.BroadcastDashboardUpdated()
 	}
 	return &resp, nil
+}
+
+// generateAndStoreQR renders the invitation card, persists it (Cloudinary or
+// disk), saves the resulting URL, and then sends the invitation notification.
+// Runs detached from the request so slow storage never blocks HTTP responses.
+func (s *GuestService) generateAndStoreQR(input qr.GuestQRInput, phone string) {
+	// Bound concurrent renders/uploads so a large CSV import doesn't spike
+	// CPU/memory on small instances.
+	s.qrJobs <- struct{}{}
+	defer func() { <-s.qrJobs }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	_, imageURL, err := s.qr.GenerateGuestQR(ctx, input)
+	if err == nil && imageURL != "" {
+		_ = s.guests.UpdateQRImage(ctx, input.GuestID, imageURL)
+	}
+
+	if phone != "" {
+		_ = s.notifications.SendGuestInvitation(ctx, input.Name, phone,
+			s.event.Name, s.event.Date, s.event.Location, imageURL)
+	}
 }
 
 func metaString(meta map[string]interface{}, key string) *string {

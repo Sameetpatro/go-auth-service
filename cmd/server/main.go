@@ -118,10 +118,12 @@ func main() {
 	engine := router.Setup(handlers)
 
 	srv := &http.Server{
-		Addr:         ":" + cfg.Server.Port,
-		Handler:      engine,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:        ":" + cfg.Server.Port,
+		Handler:     engine,
+		ReadTimeout: 30 * time.Second,
+		// Long enough for bulk CSV imports and report exports on small
+		// instances; 15s previously caused Render to return 502 mid-import.
+		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 

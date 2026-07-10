@@ -258,6 +258,8 @@ type GuestService struct {
 	event         config.EventConfig
 	audit         *audit.Service
 	ws            WebSocketBroadcaster
+	// qrJobs limits concurrent background QR card generation/uploads.
+	qrJobs chan struct{}
 }
 
 type QRGenerator interface {
@@ -289,5 +291,6 @@ func NewGuestService(
 	return &GuestService{
 		guests: guests, users: users, qr: qr, notifications: notifications,
 		event: event, audit: audit, ws: ws,
+		qrJobs: make(chan struct{}, 4),
 	}
 }

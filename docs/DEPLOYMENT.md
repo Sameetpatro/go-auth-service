@@ -21,8 +21,8 @@ JWT_REFRESH_SECRET=$(openssl rand -base64 48)
 ENVIRONMENT=production
 SERVER_BASE_URL=https://api.yourdomain.com
 
-# Neon pooled connection string (see "Database Setup (Neon)" below)
-DATABASE_URL=postgresql://user:password@ep-xxxxx-pooler.region.aws.neon.tech/event_entry?sslmode=require
+# Neon direct connection string (see "Database Setup (Neon)" below)
+DATABASE_URL=postgresql://user:password@ep-xxxxx.region.aws.neon.tech/event_entry?sslmode=require
 
 # Cloudinary credential (see "QR Image Storage (Cloudinary)" below)
 CLOUDINARY_URL=cloudinary://<api_key>:<api_secret>@<cloud_name>
@@ -42,11 +42,12 @@ RATE_LIMIT_RPM=200
 1. Create a free project at [console.neon.tech](https://console.neon.tech).
    Pick the region closest to your Render service region.
 2. In the project, create a database named `event_entry` (or use the default).
-3. Copy the **pooled** connection string: Dashboard -> Connect ->
-   check **"Connection pooling"**. The host contains `-pooler`, e.g.
-   `ep-xxxxx-pooler.ap-southeast-1.aws.neon.tech`. Use the pooled endpoint —
-   Neon's free tier allows few direct connections, and the app opens up to
-   `DB_MAX_OPEN_CONNS` (default 25).
+3. Copy the **direct** connection string: Dashboard -> Connect, and leave
+   **"Connection pooling" unchecked** — the host must NOT contain `-pooler`.
+   Neon's PgBouncer pooler (transaction mode) breaks `lib/pq` prepared
+   statements under concurrent load ("bind message supplies N parameters"
+   errors). The direct endpoint allows ~112 connections on the free tier,
+   comfortably above the app's `DB_MAX_OPEN_CONNS` (default 25).
 4. Ensure the string ends with `?sslmode=require` (Neon requires TLS; the app
    also defaults to `require` when `sslmode` is omitted).
 5. Set it as `DATABASE_URL` in Render -> your service -> Environment.
