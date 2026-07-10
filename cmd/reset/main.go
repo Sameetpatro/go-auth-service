@@ -9,6 +9,7 @@ import (
 	"github.com/sameetpatro/go-qr-auth/internal/config"
 	"github.com/sameetpatro/go-qr-auth/internal/database"
 	"github.com/sameetpatro/go-qr-auth/internal/service"
+	"github.com/sameetpatro/go-qr-auth/internal/storage"
 )
 
 func main() {
@@ -25,7 +26,16 @@ func main() {
 	}
 	defer db.Close()
 
-	resetService := service.NewResetService(db, cfg.Storage.QRImagePath)
+	var qrPurger service.QRPurger
+	if cfg.Storage.CloudinaryURL != "" {
+		cld, err := storage.NewCloudinary(cfg.Storage.CloudinaryURL)
+		if err != nil {
+			log.Fatalf("cloudinary: %v", err)
+		}
+		qrPurger = cld
+	}
+
+	resetService := service.NewResetService(db, cfg.Storage.QRImagePath, qrPurger)
 	if err := resetService.ResetAllData(context.Background()); err != nil {
 		log.Fatalf("reset: %v", err)
 	}

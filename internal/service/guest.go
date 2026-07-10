@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -146,6 +147,22 @@ func (s *GuestService) generateAndStoreQR(input qr.GuestQRInput, phone string) {
 	}
 }
 
+// deleteStoredCards removes the Cloudinary (or local-disk) QR images for
+// deleted guests in the background; the DB rows are already gone, so failures
+// here only leave harmless orphaned images behind.
+func (s *GuestService) deleteStoredCards(cards map[int64]string) {
+	s.qrJobs <- struct{}{}
+	defer func() { <-s.qrJobs }()
+
+	for guestID, name := range cards {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := s.qr.DeleteStoredCard(ctx, guestID, name); err != nil {
+			log.Printf("qr: delete stored card for guest %d: %v", guestID, err)
+		}
+		cancel()
+	}
+}
+
 func metaString(meta map[string]interface{}, key string) *string {
 	if v, ok := meta[key].(string); ok && v != "" {
 		return &v
@@ -233,6 +250,7 @@ func (s *GuestService) Delete(ctx context.Context, id int64, userID int64, role 
 	if err := s.guests.Delete(ctx, id); err != nil {
 		return err
 	}
+	go s.deleteStoredCards(map[int64]string{id: existing.Name})
 	s.audit.Log(ctx, &userID, &role, models.AuditDeleteGuest,
 		fmt.Sprintf("Deleted guest ID %d", id), ip)
 	if s.ws != nil {
@@ -262,9 +280,23 @@ func (s *GuestService) DeleteAll(ctx context.Context, userID int64, role models.
 		return nil, ErrForbiddenAction
 	}
 
+	// Capture IDs/names before the rows disappear so we can clean up their
+	// stored QR images afterwards.
+	toDelete, _, err := s.guests.ListByCreator(ctx, ownerID, 100000, 0)
+	if err != nil {
+		return nil, err
+	}
+
 	deleted, err := s.guests.DeleteAllByCreator(ctx, ownerID)
 	if err != nil {
 		return nil, err
+	}
+	if len(toDelete) > 0 {
+		cards := make(map[int64]string, len(toDelete))
+		for _, g := range toDelete {
+			cards[g.ID] = g.Name
+		}
+		go s.deleteStoredCards(cards)
 	}
 	s.audit.Log(ctx, &userID, &role, models.AuditBulkDeleteGuests,
 		fmt.Sprintf("Bulk deleted %d guests for leader ID %d", deleted, ownerID), ip)

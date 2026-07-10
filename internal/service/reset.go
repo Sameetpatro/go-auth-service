@@ -3,18 +3,26 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/jmoiron/sqlx"
 )
 
-type ResetService struct {
-	db        *sqlx.DB
-	qrPath    string
+// QRPurger bulk-deletes stored QR images (e.g. everything under the "qr/"
+// prefix on Cloudinary). Nil when only local-disk storage is in use.
+type QRPurger interface {
+	DeleteAllPNGs(ctx context.Context, prefix string) error
 }
 
-func NewResetService(db *sqlx.DB, qrImagePath string) *ResetService {
-	return &ResetService{db: db, qrPath: qrImagePath}
+type ResetService struct {
+	db      *sqlx.DB
+	qrPath  string
+	qrPurge QRPurger
+}
+
+func NewResetService(db *sqlx.DB, qrImagePath string, qrPurge QRPurger) *ResetService {
+	return &ResetService{db: db, qrPath: qrImagePath, qrPurge: qrPurge}
 }
 
 func (s *ResetService) ResetAllData(ctx context.Context) error {
@@ -46,6 +54,13 @@ func (s *ResetService) ResetAllData(ctx context.Context) error {
 	if s.qrPath != "" {
 		_ = os.RemoveAll(s.qrPath)
 		_ = os.MkdirAll(s.qrPath, 0o755)
+	}
+
+	if s.qrPurge != nil {
+		if err := s.qrPurge.DeleteAllPNGs(context.Background(), "qr/"); err != nil {
+			// DB reset already succeeded; leftover images are harmless.
+			log.Printf("reset: cloudinary purge failed: %v", err)
+		}
 	}
 
 	return nil

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cloudinary/cloudinary-go/v2"
 	"github.com/cloudinary/cloudinary-go/v2/api"
+	"github.com/cloudinary/cloudinary-go/v2/api/admin"
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 )
 
@@ -54,4 +55,40 @@ func (s *CloudinaryStorage) UploadPNG(ctx context.Context, data []byte, publicID
 		return "", fmt.Errorf("cloudinary upload: empty secure_url in response")
 	}
 	return resp.SecureURL, nil
+}
+
+// DeletePNG permanently removes a single asset (e.g. "qr/guest_42") and
+// invalidates CDN caches. Deleting a non-existent asset is not an error.
+func (s *CloudinaryStorage) DeletePNG(ctx context.Context, publicID string) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	resp, err := s.cld.Upload.Destroy(ctx, uploader.DestroyParams{
+		PublicID:   publicID,
+		Invalidate: api.Bool(true),
+	})
+	if err != nil {
+		return fmt.Errorf("cloudinary destroy %s: %w", publicID, err)
+	}
+	// "ok" on success, "not found" when already gone — both acceptable.
+	if resp.Result != "ok" && resp.Result != "not found" {
+		return fmt.Errorf("cloudinary destroy %s: %s", publicID, resp.Result)
+	}
+	return nil
+}
+
+// DeleteAllPNGs removes every asset under the given prefix (e.g. "qr/").
+// Used by the admin full-reset flow.
+func (s *CloudinaryStorage) DeleteAllPNGs(ctx context.Context, prefix string) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	_, err := s.cld.Admin.DeleteAssetsByPrefix(ctx, admin.DeleteAssetsByPrefixParams{
+		Prefix:     api.CldAPIArray{prefix},
+		Invalidate: api.Bool(true),
+	})
+	if err != nil {
+		return fmt.Errorf("cloudinary delete by prefix %s: %w", prefix, err)
+	}
+	return nil
 }

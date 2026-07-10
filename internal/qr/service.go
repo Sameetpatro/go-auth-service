@@ -20,6 +20,7 @@ import (
 // returns its public URL. When nil, the Service falls back to local disk.
 type Uploader interface {
 	UploadPNG(ctx context.Context, data []byte, publicID string) (string, error)
+	DeletePNG(ctx context.Context, publicID string) error
 }
 
 type GuestQRInput struct {
@@ -108,6 +109,19 @@ func (s *Service) storeCard(ctx context.Context, input GuestQRInput, token strin
 // permanent storage and does not need regeneration.
 func (s *Service) IsPermanentURL(url *string) bool {
 	return s.uploader != nil && url != nil && strings.Contains(*url, "res.cloudinary.com")
+}
+
+// DeleteStoredCard removes a guest's stored QR card from Cloudinary (or the
+// local disk fallback) so deleted guests don't leave orphaned images behind.
+func (s *Service) DeleteStoredCard(ctx context.Context, guestID int64, name string) error {
+	if s.uploader != nil {
+		return s.uploader.DeletePNG(ctx, fmt.Sprintf("qr/guest_%d", guestID))
+	}
+	filename := fmt.Sprintf("%s_%d.png", SanitizeFilename(name), guestID)
+	if err := os.Remove(filepath.Join(s.imagePath, filename)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 func (s *Service) buildCardInfo(input GuestQRInput) GuestCardInfo {

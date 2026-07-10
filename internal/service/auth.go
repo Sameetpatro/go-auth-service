@@ -268,6 +268,7 @@ type QRGenerator interface {
 	RenderGuestQRPNG(input qr.GuestQRInput, token string) ([]byte, error)
 	RegenerateCard(ctx context.Context, input qr.GuestQRInput, token string) (imageURL string, err error)
 	IsPermanentURL(url *string) bool
+	DeleteStoredCard(ctx context.Context, guestID int64, name string) error
 }
 
 type NotificationSender interface {

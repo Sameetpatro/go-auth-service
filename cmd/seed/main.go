@@ -49,12 +49,14 @@ func main() {
 	auditRepo := repository.NewAuditRepository(db)
 	auditService := audit.NewService(auditRepo)
 	var qrUploader qr.Uploader
+	var qrPurger service.QRPurger
 	if cfg.Storage.CloudinaryURL != "" {
 		cld, err := storage.NewCloudinary(cfg.Storage.CloudinaryURL)
 		if err != nil {
 			log.Fatalf("cloudinary: %v", err)
 		}
 		qrUploader = cld
+		qrPurger = cld
 	}
 	qrService := qr.NewService(cfg.Storage, cfg.Event, cfg.JWT.AccessSecret, qrUploader)
 	notificationService := notifications.NewService(
@@ -64,8 +66,8 @@ func main() {
 	)
 	guestService := service.NewGuestService(guestRepo, userRepo, qrService, notificationService, cfg.Event, auditService, nil)
 	coordinatorService := service.NewCoordinatorService(userRepo, auditService)
-	leaderService := service.NewLeaderService(userRepo, auditService)
-	resetService := service.NewResetService(db, cfg.Storage.QRImagePath)
+	leaderService := service.NewLeaderService(userRepo, guestRepo, qrService, auditService)
+	resetService := service.NewResetService(db, cfg.Storage.QRImagePath, qrPurger)
 
 	ctx := context.Background()
 	master, err := userRepo.FindByEmail(ctx, "master@event.app")

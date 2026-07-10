@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
-	"database/sql"
+	"time"
 
 	"github.com/sameetpatro/go-qr-auth/internal/audit"
 	"github.com/sameetpatro/go-qr-auth/internal/dto"
@@ -26,12 +28,14 @@ var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{1,48}[a-zA-
 const leaderEmailDomain = "leader.jms"
 
 type LeaderService struct {
-	users *repository.UserRepository
-	audit *audit.Service
+	users  *repository.UserRepository
+	guests *repository.GuestRepository
+	qr     QRGenerator
+	audit  *audit.Service
 }
 
-func NewLeaderService(users *repository.UserRepository, audit *audit.Service) *LeaderService {
-	return &LeaderService{users: users, audit: audit}
+func NewLeaderService(users *repository.UserRepository, guests *repository.GuestRepository, qrGen QRGenerator, audit *audit.Service) *LeaderService {
+	return &LeaderService{users: users, guests: guests, qr: qrGen, audit: audit}
 }
 
 func (s *LeaderService) Create(ctx context.Context, masterID int64, req dto.CreateLeaderRequest, ip string) (*dto.CreateLeaderResponse, error) {
@@ -156,12 +160,28 @@ func (s *LeaderService) ResetPassword(ctx context.Context, masterID, leaderID in
 }
 
 func (s *LeaderService) Delete(ctx context.Context, masterID, leaderID int64, ip string) (*dto.DeleteLeaderResult, error) {
+	// Snapshot the leader's guests before the cascade delete so their stored
+	// QR images can be cleaned up from Cloudinary afterwards.
+	ownedGuests, _, guestsErr := s.guests.ListByCreator(ctx, leaderID, 100000, 0)
+
 	guestsDeleted, err := s.users.DeleteLeader(ctx, leaderID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrLeaderNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	if guestsErr == nil && len(ownedGuests) > 0 {
+		go func() {
+			for _, g := range ownedGuests {
+				cctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				if err := s.qr.DeleteStoredCard(cctx, g.ID, g.Name); err != nil {
+					log.Printf("qr: delete stored card for guest %d: %v", g.ID, err)
+				}
+				cancel()
+			}
+		}()
 	}
 	role := models.RoleMaster
 	s.audit.Log(ctx, &masterID, &role, models.AuditDeleteLeader,

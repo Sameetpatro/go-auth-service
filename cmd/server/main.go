@@ -68,12 +68,14 @@ func main() {
 	jwtService := jwtsvc.NewService(cfg.JWT)
 
 	var qrUploader qr.Uploader
+	var qrPurger service.QRPurger
 	if cfg.Storage.CloudinaryURL != "" {
 		cld, err := storage.NewCloudinary(cfg.Storage.CloudinaryURL)
 		if err != nil {
 			log.Fatalf("cloudinary: %v", err)
 		}
 		qrUploader = cld
+		qrPurger = cld
 		log.Println("QR image storage: Cloudinary (permanent CDN)")
 	} else {
 		log.Printf("QR image storage: local disk at %s (set CLOUDINARY_URL for permanent storage)", cfg.Storage.QRImagePath)
@@ -92,14 +94,14 @@ func main() {
 
 	authService := service.NewAuthService(userRepo, tokenRepo, jwtService, auditService)
 	coordinatorService := service.NewCoordinatorService(userRepo, auditService)
-	leaderService := service.NewLeaderService(userRepo, auditService)
+	leaderService := service.NewLeaderService(userRepo, guestRepo, qrService, auditService)
 	guestService := service.NewGuestService(guestRepo, userRepo, qrService, notificationService, cfg.Event, auditService, wsBroadcaster)
 	service.SetAPIBaseURL(cfg.Server.BaseURL)
 	scanService := service.NewScanService(guestRepo, scanRepo, auditService, wsBroadcaster)
 	analyticsService := service.NewAnalyticsService(analyticsRepo)
 	insightsService := service.NewInsightsService(analyticsRepo)
 	reportService := service.NewReportService(guestRepo, analyticsRepo, auditService)
-	resetService := service.NewResetService(db, cfg.Storage.QRImagePath)
+	resetService := service.NewResetService(db, cfg.Storage.QRImagePath, qrPurger)
 
 	// Handlers
 	handlers := router.Handlers{
