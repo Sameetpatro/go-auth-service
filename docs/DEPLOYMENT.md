@@ -2,14 +2,12 @@
 
 ## Overview
 
-This guide covers deploying the Event Entry Management API to production environments.
+This guide covers deploying the Event Entry Management API to production. The
+recommended stack is:
 
-## Prerequisites
-
-- PostgreSQL 14+ (managed service recommended: AWS RDS, Google Cloud SQL, or Supabase)
-- Docker or a Linux VM with Go 1.23+
-- Reverse proxy (Nginx or Caddy) with TLS
-- Domain name with SSL certificate
+- **API**: Render web service (Docker)
+- **Database**: Neon Postgres (free tier)
+- **QR image storage**: Cloudinary (free tier)
 
 ## Environment Variables
 
@@ -23,41 +21,59 @@ JWT_REFRESH_SECRET=$(openssl rand -base64 48)
 ENVIRONMENT=production
 SERVER_BASE_URL=https://api.yourdomain.com
 
-DB_HOST=your-rds-endpoint.region.rds.amazonaws.com
-DB_PORT=5432
-DB_USER=event_app
-DB_PASSWORD=<strong-password>
-DB_NAME=event_entry
-DB_SSLMODE=require
+# Neon pooled connection string (see "Database Setup (Neon)" below)
+DATABASE_URL=postgresql://user:password@ep-xxxxx-pooler.region.aws.neon.tech/event_entry?sslmode=require
+
+# Cloudinary credential (see "QR Image Storage (Cloudinary)" below)
+CLOUDINARY_URL=cloudinary://<api_key>:<api_secret>@<cloud_name>
+
+AUTO_MIGRATE=true
 
 EVENT_NAME=Your Event Name
 EVENT_DATE=2026-06-15
 EVENT_LOCATION=Your Venue
 
-QR_IMAGE_PATH=/var/app/storage/qr
-QR_IMAGE_URL=https://api.yourdomain.com/storage/qr
-
 CORS_ALLOWED_ORIGINS=https://your-android-app-domain.com
 RATE_LIMIT_RPM=200
 ```
 
-## Database Setup
+## Database Setup (Neon)
 
-1. Create the database and user:
+1. Create a free project at [console.neon.tech](https://console.neon.tech).
+   Pick the region closest to your Render service region.
+2. In the project, create a database named `event_entry` (or use the default).
+3. Copy the **pooled** connection string: Dashboard -> Connect ->
+   check **"Connection pooling"**. The host contains `-pooler`, e.g.
+   `ep-xxxxx-pooler.ap-southeast-1.aws.neon.tech`. Use the pooled endpoint —
+   Neon's free tier allows few direct connections, and the app opens up to
+   `DB_MAX_OPEN_CONNS` (default 25).
+4. Ensure the string ends with `?sslmode=require` (Neon requires TLS; the app
+   also defaults to `require` when `sslmode` is omitted).
+5. Set it as `DATABASE_URL` in Render -> your service -> Environment.
+6. Keep `AUTO_MIGRATE=true` for the first deploy — the app creates the full
+   schema and seeds the master user (`master@event.app` / `Master@123`) on boot.
+7. Change the default master password immediately after first login.
 
-```sql
-CREATE USER event_app WITH PASSWORD 'your-password';
-CREATE DATABASE event_entry OWNER event_app;
-GRANT ALL PRIVILEGES ON DATABASE event_entry TO event_app;
-```
+Notes for Neon free tier:
 
-2. Run migrations:
+- The compute autosuspends after inactivity and resumes in a few hundred ms on
+  the next query — no code changes needed.
+- `DB_CONN_MAX_LIFETIME` (default 5m) keeps stale connections from lingering
+  across autosuspend cycles.
 
-```bash
-psql -h $DB_HOST -U event_app -d event_entry -f migrations/001_initial_schema.up.sql
-```
+## QR Image Storage (Cloudinary)
 
-3. Change the default master password immediately after first login.
+QR invitation cards are uploaded to Cloudinary so they survive service
+restarts (Render's disk is ephemeral) and are served from a global CDN.
+
+1. Create a free account at [cloudinary.com](https://cloudinary.com).
+2. Dashboard -> API Keys -> copy the **API environment variable**, formatted
+   `cloudinary://<api_key>:<api_secret>@<cloud_name>`.
+3. Set it as `CLOUDINARY_URL` in Render.
+
+Images are stored under public IDs `qr/guest_{id}` and overwritten when a
+card is regenerated. If `CLOUDINARY_URL` is unset, the app falls back to
+local-disk storage (fine for local dev; not for Render).
 
 ## Docker Deployment
 
@@ -118,11 +134,15 @@ The `SELECT FOR UPDATE` pattern in the scan repository ensures atomic check-ins 
 
 ### Storage
 
-For production QR image storage, replace local filesystem storage with S3/GCS:
+QR image storage is handled by Cloudinary (`CLOUDINARY_URL`) — see
+"QR Image Storage (Cloudinary)" above. The uploader lives in
+`internal/storage/cloudinary.go` behind the `qr.Uploader` interface; a
+different provider (S3/GCS) can be swapped in by implementing `UploadPNG`.
 
-1. Implement a `StorageProvider` interface in `internal/qr/`
-2. Upload generated PNG files to cloud storage
-3. Set `QR_IMAGE_URL` to your CDN URL
+### Load Testing
+
+k6 scripts covering the 20-user event profile (5 leaders + 10 scanning
+coordinators + 5 viewers) live in `loadtest/` — see `loadtest/README.md`.
 
 ### Notifications
 

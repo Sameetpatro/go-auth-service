@@ -1,17 +1,26 @@
 package qr
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/sameetpatro/go-qr-auth/internal/config"
 )
+
+// Uploader stores a rendered QR card permanently (e.g. Cloudinary) and
+// returns its public URL. When nil, the Service falls back to local disk.
+type Uploader interface {
+	UploadPNG(ctx context.Context, data []byte, publicID string) (string, error)
+}
 
 type GuestQRInput struct {
 	UUID     uuid.UUID
@@ -29,14 +38,16 @@ type Service struct {
 	imagePath string
 	imageURL  string
 	event     config.EventConfig
+	uploader  Uploader
 }
 
-func NewService(cfg config.StorageConfig, event config.EventConfig, jwtSecret string) *Service {
+func NewService(cfg config.StorageConfig, event config.EventConfig, jwtSecret string, uploader Uploader) *Service {
 	return &Service{
 		secret:    jwtSecret,
 		imagePath: cfg.QRImagePath,
 		imageURL:  cfg.QRImageURL,
 		event:     event,
+		uploader:  uploader,
 	}
 }
 
@@ -49,42 +60,54 @@ func (s *Service) RenderGuestQRPNG(input GuestQRInput, token string) ([]byte, er
 	return renderInvitationCard(token, info)
 }
 
-func (s *Service) GenerateGuestQR(input GuestQRInput) (token string, imageURL string, err error) {
+func (s *Service) GenerateGuestQR(ctx context.Context, input GuestQRInput) (token string, imageURL string, err error) {
 	token = s.signToken(input.UUID.String())
 
-	if err := os.MkdirAll(s.imagePath, 0o755); err != nil {
-		return "", "", fmt.Errorf("create qr directory: %w", err)
-	}
-
-	guestID := input.GuestID
-	if guestID <= 0 {
+	if input.GuestID <= 0 {
 		return "", "", fmt.Errorf("guest id required for qr image")
 	}
 
-	filename := fmt.Sprintf("%s_%d.png", SanitizeFilename(input.Name), guestID)
-	filePath := filepath.Join(s.imagePath, filename)
-
-	info := s.buildCardInfo(input)
-	if err := writeInvitationCard(filePath, token, info); err != nil {
+	imageURL, err = s.storeCard(ctx, input, token)
+	if err != nil {
+		// Guest creation must not fail because image storage is down;
+		// the qr-image endpoint self-heals the URL on next fetch.
+		log.Printf("qr: store card for guest %d failed: %v", input.GuestID, err)
 		return token, "", nil
 	}
-
-	imageURL = fmt.Sprintf("%s/%s", s.imageURL, filename)
 	return token, imageURL, nil
 }
 
-func (s *Service) RegenerateCard(input GuestQRInput, token string) (imageURL string, err error) {
-	if err := os.MkdirAll(s.imagePath, 0o755); err != nil {
+func (s *Service) RegenerateCard(ctx context.Context, input GuestQRInput, token string) (imageURL string, err error) {
+	return s.storeCard(ctx, input, token)
+}
+
+// storeCard renders the invitation card and persists it: to Cloudinary when an
+// uploader is configured (permanent CDN URL), otherwise to the local disk.
+func (s *Service) storeCard(ctx context.Context, input GuestQRInput, token string) (string, error) {
+	info := s.buildCardInfo(input)
+	data, err := renderInvitationCard(token, info)
+	if err != nil {
 		return "", err
 	}
-	guestID := input.GuestID
-	filename := fmt.Sprintf("%s_%d.png", SanitizeFilename(input.Name), guestID)
-	filePath := filepath.Join(s.imagePath, filename)
-	info := s.buildCardInfo(input)
-	if err := writeInvitationCard(filePath, token, info); err != nil {
+
+	if s.uploader != nil {
+		return s.uploader.UploadPNG(ctx, data, fmt.Sprintf("qr/guest_%d", input.GuestID))
+	}
+
+	if err := os.MkdirAll(s.imagePath, 0o755); err != nil {
+		return "", fmt.Errorf("create qr directory: %w", err)
+	}
+	filename := fmt.Sprintf("%s_%d.png", SanitizeFilename(input.Name), input.GuestID)
+	if err := os.WriteFile(filepath.Join(s.imagePath, filename), data, 0o644); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("%s/%s", s.imageURL, filename), nil
+}
+
+// IsPermanentURL reports whether the stored qr_image_url already points at
+// permanent storage and does not need regeneration.
+func (s *Service) IsPermanentURL(url *string) bool {
+	return s.uploader != nil && url != nil && strings.Contains(*url, "res.cloudinary.com")
 }
 
 func (s *Service) buildCardInfo(input GuestQRInput) GuestCardInfo {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -87,7 +88,7 @@ func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuest
 		return nil, err
 	}
 
-	_, imageURL, err := s.qr.GenerateGuestQR(qr.GuestQRInput{
+	_, imageURL, err := s.qr.GenerateGuestQR(ctx, qr.GuestQRInput{
 		UUID:     guestUUID,
 		GuestID:  guest.ID,
 		Name:     req.Name,
@@ -312,8 +313,12 @@ func (s *GuestService) GetQRImage(ctx context.Context, id int64, userID int64, r
 		return nil, "", err
 	}
 
-	if imageURL, err := s.qr.RegenerateCard(input, guest.QRToken); err == nil && imageURL != "" {
-		_ = s.guests.UpdateQRImage(ctx, guest.ID, imageURL)
+	// Self-heal: if the stored URL is not permanent storage yet (missing, or a
+	// dead ephemeral-disk URL), upload the card now so future fetches use the CDN.
+	if !s.qr.IsPermanentURL(guest.QRImageURL) {
+		if imageURL, err := s.qr.RegenerateCard(ctx, input, guest.QRToken); err == nil && imageURL != "" {
+			_ = s.guests.UpdateQRImage(ctx, guest.ID, imageURL)
+		}
 	}
 
 	filename := fmt.Sprintf("%s_%d.png", qr.SanitizeFilename(guest.Name), guest.ID)
@@ -578,7 +583,12 @@ func (s *GuestService) InviteAll(ctx context.Context, userID int64, role models.
 
 func toGuestResponse(g *models.GuestWithChecker) dto.GuestResponse {
 	metadata := qr.RawMetadata(g.Metadata)
+	// Prefer the permanent CDN URL; ephemeral /storage/qr URLs from the old
+	// disk-based flow fall back to the API endpoint, which regenerates on demand.
 	qrURL := guestQRImageURL(g.ID)
+	if g.QRImageURL != nil && strings.Contains(*g.QRImageURL, "res.cloudinary.com") {
+		qrURL = *g.QRImageURL
+	}
 	return dto.GuestResponse{
 		ID:               g.ID,
 		UUID:             g.UUID,

@@ -18,6 +18,7 @@ import (
 	"github.com/sameetpatro/go-qr-auth/internal/qr"
 	"github.com/sameetpatro/go-qr-auth/internal/repository"
 	"github.com/sameetpatro/go-qr-auth/internal/service"
+	"github.com/sameetpatro/go-qr-auth/internal/storage"
 )
 
 func main() {
@@ -47,7 +48,15 @@ func main() {
 	guestRepo := repository.NewGuestRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
 	auditService := audit.NewService(auditRepo)
-	qrService := qr.NewService(cfg.Storage, cfg.Event, cfg.JWT.AccessSecret)
+	var qrUploader qr.Uploader
+	if cfg.Storage.CloudinaryURL != "" {
+		cld, err := storage.NewCloudinary(cfg.Storage.CloudinaryURL)
+		if err != nil {
+			log.Fatalf("cloudinary: %v", err)
+		}
+		qrUploader = cld
+	}
+	qrService := qr.NewService(cfg.Storage, cfg.Event, cfg.JWT.AccessSecret, qrUploader)
 	notificationService := notifications.NewService(
 		notifications.NewWhatsAppProvider(),
 		notifications.NewEmailProvider(),

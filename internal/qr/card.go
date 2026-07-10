@@ -7,7 +7,6 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
-	"os"
 	"regexp"
 	"strings"
 	"unicode"
@@ -154,14 +153,6 @@ func buildDetailLines(info GuestCardInfo, labelFace, bodyFace font.Face, maxWidt
 		wrapped = append(wrapped, wrapText(line, bodyFace, maxWidth)...)
 	}
 	return wrapped
-}
-
-func writeInvitationCard(path, token string, info GuestCardInfo) error {
-	data, err := renderInvitationCard(token, info)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
 }
 
 func SanitizeFilename(name string) string {

@@ -52,6 +52,10 @@ type EventConfig struct {
 type StorageConfig struct {
 	QRImagePath string
 	QRImageURL  string
+	// CloudinaryURL enables permanent QR image storage on Cloudinary
+	// (format: cloudinary://api_key:api_secret@cloud_name). When empty,
+	// images are written to the local filesystem instead.
+	CloudinaryURL string
 }
 
 type RateLimitConfig struct {
@@ -103,8 +107,9 @@ func Load() (*Config, error) {
 			Location: getEnv("EVENT_LOCATION", "Bharat Mandapam, New Delhi"),
 		},
 		Storage: StorageConfig{
-			QRImagePath: getEnv("QR_IMAGE_PATH", "./storage/qr"),
-			QRImageURL:  resolveQRImageURL(getEnv("QR_IMAGE_URL", ""), getEnv("SERVER_BASE_URL", "http://localhost:8080")),
+			QRImagePath:   getEnv("QR_IMAGE_PATH", "./storage/qr"),
+			QRImageURL:    resolveQRImageURL(getEnv("QR_IMAGE_URL", ""), getEnv("SERVER_BASE_URL", "http://localhost:8080")),
+			CloudinaryURL: getEnv("CLOUDINARY_URL", ""),
 		},
 		RateLimit: RateLimitConfig{
 			RequestsPerMinute: getEnvInt("RATE_LIMIT_RPM", 100),

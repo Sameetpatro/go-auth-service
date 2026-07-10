@@ -262,9 +262,10 @@ type GuestService struct {
 
 type QRGenerator interface {
 	SignToken(guestUUID uuid.UUID) string
-	GenerateGuestQR(input qr.GuestQRInput) (token, imageURL string, err error)
+	GenerateGuestQR(ctx context.Context, input qr.GuestQRInput) (token, imageURL string, err error)
 	RenderGuestQRPNG(input qr.GuestQRInput, token string) ([]byte, error)
-	RegenerateCard(input qr.GuestQRInput, token string) (imageURL string, err error)
+	RegenerateCard(ctx context.Context, input qr.GuestQRInput, token string) (imageURL string, err error)
+	IsPermanentURL(url *string) bool
 }
 
 type NotificationSender interface {

@@ -28,13 +28,18 @@ import (
 	"github.com/sameetpatro/go-qr-auth/internal/repository"
 	"github.com/sameetpatro/go-qr-auth/internal/router"
 	"github.com/sameetpatro/go-qr-auth/internal/service"
+	"github.com/sameetpatro/go-qr-auth/internal/storage"
 	"github.com/sameetpatro/go-qr-auth/internal/websocket"
 
 	_ "github.com/sameetpatro/go-qr-auth/docs"
 )
 
 func main() {
-	_ = godotenv.Load() // optional .env for local dev; ignored on Render
+	// Load .env from the working dir (local dev) or from Render's secret-file
+	// mount (add the file as a Secret File named ".env" in the dashboard).
+	// Neither call overrides variables already set in the environment.
+	_ = godotenv.Load()
+	_ = godotenv.Load("/etc/secrets/.env")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -61,7 +66,19 @@ func main() {
 
 	// Core services
 	jwtService := jwtsvc.NewService(cfg.JWT)
-	qrService := qr.NewService(cfg.Storage, cfg.Event, cfg.JWT.AccessSecret)
+
+	var qrUploader qr.Uploader
+	if cfg.Storage.CloudinaryURL != "" {
+		cld, err := storage.NewCloudinary(cfg.Storage.CloudinaryURL)
+		if err != nil {
+			log.Fatalf("cloudinary: %v", err)
+		}
+		qrUploader = cld
+		log.Println("QR image storage: Cloudinary (permanent CDN)")
+	} else {
+		log.Printf("QR image storage: local disk at %s (set CLOUDINARY_URL for permanent storage)", cfg.Storage.QRImagePath)
+	}
+	qrService := qr.NewService(cfg.Storage, cfg.Event, cfg.JWT.AccessSecret, qrUploader)
 	auditService := audit.NewService(auditRepo)
 	notificationService := notifications.NewService(
 		notifications.NewWhatsAppProvider(),
