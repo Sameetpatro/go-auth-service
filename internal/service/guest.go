@@ -24,7 +24,20 @@ func (s *GuestService) Create(ctx context.Context, req dto.CreateGuestRequest, u
 	if err != nil {
 		return nil, err
 	}
-	return s.createOwnedGuest(ctx, req, ownerID, userID, role, ip)
+	resp, pending, err := s.createOwnedGuest(ctx, req, ownerID, userID, role, ip, true)
+	if err != nil {
+		return nil, err
+	}
+	_ = pending
+	return resp, nil
+}
+
+// pendingQR holds work deferred until after a bulk import finishes inserting rows.
+// Concurrent QR uploads during import corrupt lib/pq prepared statements when the
+// DB URL goes through PgBouncer (Neon -pooler host).
+type pendingQR struct {
+	input qr.GuestQRInput
+	phone string
 }
 
 func (s *GuestService) resolveGuestOwner(ctx context.Context, userID int64, role models.UserRole, leaderID *int64) (int64, error) {
@@ -51,7 +64,7 @@ func (s *GuestService) resolveGuestOwner(ctx context.Context, userID int64, role
 	}
 }
 
-func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuestRequest, ownerID int64, actorID int64, role models.UserRole, ip string) (*dto.GuestResponse, error) {
+func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuestRequest, ownerID int64, actorID int64, role models.UserRole, ip string, startQR bool) (*dto.GuestResponse, *pendingQR, error) {
 	meta := qr.MergeMetadata(req.Metadata, req.Address, req.Department)
 	address, department := metaString(meta, "address"), metaString(meta, "department")
 	if req.Address != nil && *req.Address != "" {
@@ -63,10 +76,10 @@ func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuest
 
 	dup, err := s.guests.FindDuplicate(ctx, req.Name, req.PhoneNumber, req.Email)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if dup != nil {
-		return nil, fmt.Errorf("%w: guest '%s' already exists", ErrDuplicateGuest, dup.Name)
+		return nil, nil, fmt.Errorf("%w: guest '%s' already exists", ErrDuplicateGuest, dup.Name)
 	}
 
 	guestUUID := uuid.New()
@@ -87,41 +100,48 @@ func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuest
 		CreatedBy:   &ownerID,
 	}
 	if err := s.guests.Create(ctx, guest); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	// QR card rendering + Cloudinary upload take ~1s each on small instances;
-	// doing them inline made bulk imports exceed the HTTP write timeout (502s).
-	// Run them in the background — the qr-image endpoint renders on demand and
-	// self-heals qr_image_url, so the guest is usable immediately.
 	phone := ""
 	if req.PhoneNumber != nil {
 		phone = *req.PhoneNumber
 	}
-	go s.generateAndStoreQR(qr.GuestQRInput{
-		UUID:       guestUUID,
-		GuestID:    guest.ID,
-		Name:       req.Name,
-		Phone:      req.PhoneNumber,
-		Email:      req.Email,
-		Address:    address,
-		Department: department,
-		Metadata:   meta,
-	}, phone)
+	pending := &pendingQR{
+		input: qr.GuestQRInput{
+			UUID:       guestUUID,
+			GuestID:    guest.ID,
+			Name:       req.Name,
+			Phone:      req.PhoneNumber,
+			Email:      req.Email,
+			Address:    address,
+			Department: department,
+			Metadata:   meta,
+		},
+		phone: phone,
+	}
+	// QR card rendering + Cloudinary upload take ~1s each on small instances;
+	// doing them inline made bulk imports exceed the HTTP write timeout (502s).
+	// Single creates start immediately; bulk import defers until all rows insert
+	// so concurrent UpdateQRImage cannot collide with Create/FindDuplicate on
+	// PgBouncer (prepared-statement bind mismatches).
+	if startQR {
+		go s.generateAndStoreQR(pending.input, pending.phone)
+	}
 
 	s.audit.Log(ctx, &actorID, &role, models.AuditCreateGuest,
 		fmt.Sprintf("Created guest %s", req.Name), ip)
 
 	full, err := s.guests.FindByID(ctx, guest.ID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	resp := toGuestResponse(full)
 	if s.ws != nil {
 		s.ws.BroadcastGuestAdded(resp)
 		s.ws.BroadcastDashboardUpdated()
 	}
-	return &resp, nil
+	return &resp, pending, nil
 }
 
 // generateAndStoreQR renders the invitation card, persists it (Cloudinary or
@@ -168,6 +188,19 @@ func metaString(meta map[string]interface{}, key string) *string {
 		return &v
 	}
 	return nil
+}
+
+// isTransientDBError reports prepared-statement / bind races typical of
+// PgBouncer transaction pooling with lib/pq under concurrent load.
+func isTransientDBError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "08P01") ||
+		strings.Contains(msg, "bind message supplies") ||
+		strings.Contains(msg, "prepared statement") ||
+		(strings.Contains(msg, "22P02") && strings.Contains(msg, "invalid input syntax for type bigint"))
 }
 
 func (s *GuestService) Update(ctx context.Context, id int64, req dto.UpdateGuestRequest, userID int64, role models.UserRole, ip string) (*dto.GuestResponse, error) {
@@ -543,6 +576,7 @@ func (s *GuestService) Import(ctx context.Context, filename string, r io.Reader,
 	}
 
 	result := &dto.ImportResult{TotalRows: len(rows)}
+	pendingQRs := make([]*pendingQR, 0, len(rows))
 	for i, row := range rows {
 		req := dto.CreateGuestRequest{
 			Name:     row.Name,
@@ -560,12 +594,33 @@ func (s *GuestService) Import(ctx context.Context, filename string, r io.Reader,
 		if row.Department != "" {
 			req.Department = &row.Department
 		}
-		if _, err := s.createOwnedGuest(ctx, req, ownerID, userID, role, ip); err != nil {
+
+		var (
+			pending *pendingQR
+			err     error
+		)
+		// Retry transient prepared-statement races (PgBouncer / concurrent load).
+		for attempt := 0; attempt < 3; attempt++ {
+			_, pending, err = s.createOwnedGuest(ctx, req, ownerID, userID, role, ip, false)
+			if err == nil || !isTransientDBError(err) {
+				break
+			}
+			time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
+		}
+		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("row %d: %v", i+2, err))
-		} else {
-			result.Imported++
+			continue
 		}
+		result.Imported++
+		if pending != nil {
+			pendingQRs = append(pendingQRs, pending)
+		}
+	}
+
+	// Start QR generation only after every insert finished.
+	for _, p := range pendingQRs {
+		go s.generateAndStoreQR(p.input, p.phone)
 	}
 
 	s.audit.Log(ctx, &userID, &role, models.AuditImportGuests,

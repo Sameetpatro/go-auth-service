@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -12,6 +14,13 @@ import (
 )
 
 func NewPostgres(cfg config.DatabaseConfig) (*sqlx.DB, error) {
+	if strings.Contains(cfg.Host, "-pooler") {
+		log.Printf("WARNING: DATABASE_URL host %q looks like Neon PgBouncer. "+
+			"Transaction pooling breaks lib/pq prepared statements under concurrent load "+
+			"(bind message supplies N parameters). Use the direct Neon endpoint "+
+			"(Connection pooling unchecked) instead.", cfg.Host)
+	}
+
 	db, err := sqlx.Connect("postgres", cfg.DSN())
 	if err != nil {
 		return nil, fmt.Errorf("connect to postgres: %w", err)

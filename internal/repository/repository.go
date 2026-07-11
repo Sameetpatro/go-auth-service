@@ -428,40 +428,39 @@ func (r *GuestRepository) FindDuplicate(ctx context.Context, name string, phone,
 	hasPhone := phone != nil && strings.TrimSpace(*phone) != ""
 	hasEmail := email != nil && strings.TrimSpace(*email) != ""
 
-	var query string
-	var args []interface{}
+	var id int64
+	var err error
 
-	if hasPhone || hasEmail {
-		parts := make([]string, 0, 2)
-		argIdx := 1
-		if hasPhone {
-			parts = append(parts, fmt.Sprintf(`g.phone_number = $%d`, argIdx))
-			args = append(args, strings.TrimSpace(*phone))
-			argIdx++
-		}
-		if hasEmail {
-			parts = append(parts, fmt.Sprintf(`LOWER(g.email) = LOWER($%d)`, argIdx))
-			args = append(args, strings.TrimSpace(*email))
-		}
-		query = guestSelectBase + ` WHERE (` + strings.Join(parts, ` OR `) + `) LIMIT 1`
-	} else {
-		query = guestSelectBase + `
-			WHERE LOWER(TRIM(g.name)) = LOWER($1)
-			  AND (g.phone_number IS NULL OR TRIM(g.phone_number) = '')
-			  AND (g.email IS NULL OR TRIM(g.email) = '')
-			LIMIT 1`
-		args = []interface{}{name}
+	switch {
+	case hasPhone && hasEmail:
+		err = r.db.GetContext(ctx, &id, `
+			SELECT id FROM guests
+			WHERE phone_number = $1 OR LOWER(email) = LOWER($2)
+			LIMIT 1`, strings.TrimSpace(*phone), strings.TrimSpace(*email))
+	case hasPhone:
+		err = r.db.GetContext(ctx, &id, `
+			SELECT id FROM guests WHERE phone_number = $1 LIMIT 1`,
+			strings.TrimSpace(*phone))
+	case hasEmail:
+		err = r.db.GetContext(ctx, &id, `
+			SELECT id FROM guests WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+			strings.TrimSpace(*email))
+	default:
+		err = r.db.GetContext(ctx, &id, `
+			SELECT id FROM guests
+			WHERE LOWER(TRIM(name)) = LOWER($1)
+			  AND (phone_number IS NULL OR TRIM(phone_number) = '')
+			  AND (email IS NULL OR TRIM(email) = '')
+			LIMIT 1`, name)
 	}
 
-	var guest models.GuestWithChecker
-	err := r.db.GetContext(ctx, &guest, query, args...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &guest, nil
+	return r.FindByID(ctx, id)
 }
 
 func (r *GuestRepository) CountByCreator(ctx context.Context, userID int64) (total, checkedIn int64, err error) {
