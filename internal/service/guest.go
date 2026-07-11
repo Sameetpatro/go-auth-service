@@ -52,16 +52,16 @@ func (s *GuestService) resolveGuestOwner(ctx context.Context, userID int64, role
 }
 
 func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuestRequest, ownerID int64, actorID int64, role models.UserRole, ip string) (*dto.GuestResponse, error) {
-	meta := qr.MergeMetadata(req.Metadata, req.Address, req.College)
-	address, college := metaString(meta, "address"), metaString(meta, "college")
+	meta := qr.MergeMetadata(req.Metadata, req.Address, req.Department)
+	address, department := metaString(meta, "address"), metaString(meta, "department")
 	if req.Address != nil && *req.Address != "" {
 		address = req.Address
 	}
-	if req.College != nil && *req.College != "" {
-		college = req.College
+	if req.Department != nil && *req.Department != "" {
+		department = req.Department
 	}
 
-	dup, err := s.guests.FindDuplicate(ctx, req.Name, req.PhoneNumber, req.Email, address, college)
+	dup, err := s.guests.FindDuplicate(ctx, req.Name, req.PhoneNumber, req.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -99,14 +99,14 @@ func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuest
 		phone = *req.PhoneNumber
 	}
 	go s.generateAndStoreQR(qr.GuestQRInput{
-		UUID:     guestUUID,
-		GuestID:  guest.ID,
-		Name:     req.Name,
-		Phone:    req.PhoneNumber,
-		Email:    req.Email,
-		Address:  address,
-		College:  college,
-		Metadata: meta,
+		UUID:       guestUUID,
+		GuestID:    guest.ID,
+		Name:       req.Name,
+		Phone:      req.PhoneNumber,
+		Email:      req.Email,
+		Address:    address,
+		Department: department,
+		Metadata:   meta,
 	}, phone)
 
 	s.audit.Log(ctx, &actorID, &role, models.AuditCreateGuest,
@@ -205,8 +205,9 @@ func (s *GuestService) Update(ctx context.Context, id int64, req dto.UpdateGuest
 	if req.Address != nil {
 		meta["address"] = *req.Address
 	}
-	if req.College != nil {
-		meta["college"] = *req.College
+	if req.Department != nil {
+		meta["department"] = *req.Department
+		delete(meta, "college")
 	}
 	metaJSON, err := json.Marshal(meta)
 	if err != nil {
@@ -348,16 +349,16 @@ func (s *GuestService) GetQRImage(ctx context.Context, id int64, userID int64, r
 	}
 
 	meta := qr.RawMetadata(guest.Metadata)
-	address, college := qr.MetadataAddressCollege(meta)
+	address, department := qr.MetadataAddressDepartment(meta)
 	input := qr.GuestQRInput{
-		UUID:     guest.UUID,
-		GuestID:  guest.ID,
-		Name:     guest.Name,
-		Phone:    guest.PhoneNumber,
-		Email:    guest.Email,
-		Address:  address,
-		College:  college,
-		Metadata: meta,
+		UUID:       guest.UUID,
+		GuestID:    guest.ID,
+		Name:       guest.Name,
+		Phone:      guest.PhoneNumber,
+		Email:      guest.Email,
+		Address:    address,
+		Department: department,
+		Metadata:   meta,
 	}
 
 	png, err := s.qr.RenderGuestQRPNG(input, guest.QRToken)
@@ -556,8 +557,8 @@ func (s *GuestService) Import(ctx context.Context, filename string, r io.Reader,
 		if row.Address != "" {
 			req.Address = &row.Address
 		}
-		if row.College != "" {
-			req.College = &row.College
+		if row.Department != "" {
+			req.Department = &row.Department
 		}
 		if _, err := s.createOwnedGuest(ctx, req, ownerID, userID, role, ip); err != nil {
 			result.Failed++

@@ -24,14 +24,14 @@ type Uploader interface {
 }
 
 type GuestQRInput struct {
-	UUID     uuid.UUID
-	GuestID  int64
-	Name     string
-	Phone    *string
-	Email    *string
-	Address  *string
-	College  *string
-	Metadata map[string]interface{}
+	UUID       uuid.UUID
+	GuestID    int64
+	Name       string
+	Phone      *string
+	Email      *string
+	Address    *string
+	Department *string
+	Metadata   map[string]interface{}
 }
 
 type Service struct {
@@ -144,30 +144,35 @@ func (s *Service) buildCardInfo(input GuestQRInput) GuestCardInfo {
 			info.Address = v
 		}
 	}
-	if input.College != nil {
-		info.College = *input.College
+	if input.Department != nil {
+		info.Department = *input.Department
 	} else if input.Metadata != nil {
-		if v, ok := input.Metadata["college"].(string); ok {
-			info.College = v
+		if v, ok := input.Metadata["department"].(string); ok {
+			info.Department = v
+		} else if v, ok := input.Metadata["college"].(string); ok {
+			// Legacy metadata key from before the college→department rename.
+			info.Department = v
 		}
 	}
 	return info
 }
 
-func MetadataAddressCollege(meta map[string]interface{}) (address, college *string) {
+func MetadataAddressDepartment(meta map[string]interface{}) (address, department *string) {
 	if meta == nil {
 		return nil, nil
 	}
 	if v, ok := meta["address"].(string); ok && v != "" {
 		address = &v
 	}
-	if v, ok := meta["college"].(string); ok && v != "" {
-		college = &v
+	if v, ok := meta["department"].(string); ok && v != "" {
+		department = &v
+	} else if v, ok := meta["college"].(string); ok && v != "" {
+		department = &v
 	}
-	return address, college
+	return address, department
 }
 
-func MergeMetadata(reqMeta map[string]interface{}, address, college *string) map[string]interface{} {
+func MergeMetadata(reqMeta map[string]interface{}, address, department *string) map[string]interface{} {
 	meta := make(map[string]interface{})
 	for k, v := range reqMeta {
 		meta[k] = v
@@ -175,8 +180,9 @@ func MergeMetadata(reqMeta map[string]interface{}, address, college *string) map
 	if address != nil && *address != "" {
 		meta["address"] = *address
 	}
-	if college != nil && *college != "" {
-		meta["college"] = *college
+	if department != nil && *department != "" {
+		meta["department"] = *department
+		delete(meta, "college")
 	}
 	if len(meta) == 0 {
 		return map[string]interface{}{}

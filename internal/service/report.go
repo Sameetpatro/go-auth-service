@@ -88,14 +88,14 @@ func (s *ReportService) ExportBackupCSV(ctx context.Context, userID int64, role 
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 	_ = w.Write([]string{
-		"ID", "UUID", "Name", "Phone", "Email", "Address", "College",
+		"ID", "UUID", "Name", "Phone", "Email", "Address", "Department",
 		"Invited By", "Invited By Email", "Checked In", "Checked In At",
 		"Checked In By", "Gate", "Created At",
 	})
 
 	for _, row := range guests {
 		g := row.GuestWithChecker
-		phone, email, address, college := "", "", "", ""
+		phone, email, address, department := "", "", "", ""
 		if g.PhoneNumber != nil {
 			phone = *g.PhoneNumber
 		}
@@ -109,8 +109,10 @@ func (s *ReportService) ExportBackupCSV(ctx context.Context, userID int64, role 
 		if v, ok := meta["address"].(string); ok {
 			address = v
 		}
-		if v, ok := meta["college"].(string); ok {
-			college = v
+		if v, ok := meta["department"].(string); ok {
+			department = v
+		} else if v, ok := meta["college"].(string); ok {
+			department = v
 		}
 		invitedBy := ""
 		if g.CreatedBy != nil {
@@ -135,7 +137,7 @@ func (s *ReportService) ExportBackupCSV(ctx context.Context, userID int64, role 
 		_ = w.Write([]string{
 			fmt.Sprintf("%d", g.ID),
 			g.UUID.String(),
-			g.Name, phone, email, address, college,
+			g.Name, phone, email, address, department,
 			invitedBy, invitedByEmail,
 			fmt.Sprintf("%t", g.IsCheckedIn),
 			checkedInAt, checkedBy, gate,

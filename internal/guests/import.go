@@ -16,12 +16,12 @@ type GuestRow struct {
 	PhoneNumber string
 	Email       string
 	Address     string
-	College     string
+	Department  string
 	Extra       map[string]string
 }
 
 var coreFields = map[string]bool{
-	"name": true, "phone_number": true, "email": true, "address": true, "college": true,
+	"name": true, "phone_number": true, "email": true, "address": true, "department": true, "college": true,
 }
 
 type Parser struct{}
@@ -93,8 +93,8 @@ func (p *Parser) parseRecords(headers []string, records [][]string) ([]GuestRow,
 				row.Email = val
 			case "address":
 				row.Address = val
-			case "college":
-				row.College = val
+			case "department", "college":
+				row.Department = val
 			default:
 				if val != "" {
 					row.Extra[field] = val
@@ -117,6 +117,8 @@ func normalizeField(h string) string {
 		return "phone_number"
 	case "fullname", "guest_name", "guestname":
 		return "name"
+	case "college", "dept":
+		return "department"
 	default:
 		return h
 	}

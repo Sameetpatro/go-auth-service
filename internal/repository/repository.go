@@ -275,7 +275,8 @@ func (r *GuestRepository) SearchByCreator(ctx context.Context, creatorID int64, 
 		SELECT COUNT(*) FROM guests
 		WHERE created_by = $1 AND (
 			name ILIKE $2 OR phone_number ILIKE $2 OR email ILIKE $2
-			OR metadata->>'address' ILIKE $2 OR metadata->>'college' ILIKE $2
+			OR metadata->>'address' ILIKE $2
+			OR metadata->>'department' ILIKE $2 OR metadata->>'college' ILIKE $2
 		)`
 	var total int64
 	if err := r.db.GetContext(ctx, &total, countQuery, creatorID, pattern); err != nil {
@@ -284,7 +285,8 @@ func (r *GuestRepository) SearchByCreator(ctx context.Context, creatorID int64, 
 	selectQuery := guestSelectBase + `
 		WHERE g.created_by = $1 AND (
 			g.name ILIKE $2 OR g.phone_number ILIKE $2 OR g.email ILIKE $2
-			OR g.metadata->>'address' ILIKE $2 OR g.metadata->>'college' ILIKE $2
+			OR g.metadata->>'address' ILIKE $2
+			OR g.metadata->>'department' ILIKE $2 OR g.metadata->>'college' ILIKE $2
 		)
 		ORDER BY g.name ASC
 		LIMIT $3 OFFSET $4`
@@ -386,7 +388,8 @@ func (r *GuestRepository) Search(ctx context.Context, query string, limit, offse
 
 	selectQuery := guestSelectBase + `
 		WHERE g.name ILIKE $1 OR g.phone_number ILIKE $1 OR g.email ILIKE $1
-		   OR g.metadata->>'address' ILIKE $1 OR g.metadata->>'college' ILIKE $1
+		   OR g.metadata->>'address' ILIKE $1
+		   OR g.metadata->>'department' ILIKE $1 OR g.metadata->>'college' ILIKE $1
 		ORDER BY g.name ASC
 		LIMIT $2 OFFSET $3`
 	var guests []models.GuestWithChecker
@@ -412,39 +415,43 @@ func (r *GuestRepository) List(ctx context.Context, limit, offset int) ([]models
 	return guests, total, nil
 }
 
-// FindDuplicate returns an existing guest matching name, phone, email, address, or college.
-func (r *GuestRepository) FindDuplicate(ctx context.Context, name string, phone, email, address, college *string) (*models.GuestWithChecker, error) {
+// FindDuplicate returns an existing guest with the same phone or email.
+// Address and department are intentionally excluded — many guests share them.
+// When neither phone nor email is provided, an exact name match among other
+// contact-less guests is treated as a duplicate.
+func (r *GuestRepository) FindDuplicate(ctx context.Context, name string, phone, email *string) (*models.GuestWithChecker, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, nil
 	}
 
-	query := guestSelectBase + `
-		WHERE LOWER(TRIM(g.name)) = LOWER($1)`
-	args := []interface{}{name}
-	argIdx := 2
+	hasPhone := phone != nil && strings.TrimSpace(*phone) != ""
+	hasEmail := email != nil && strings.TrimSpace(*email) != ""
 
-	if phone != nil && strings.TrimSpace(*phone) != "" {
-		query += fmt.Sprintf(` OR g.phone_number = $%d`, argIdx)
-		args = append(args, strings.TrimSpace(*phone))
-		argIdx++
-	}
-	if email != nil && strings.TrimSpace(*email) != "" {
-		query += fmt.Sprintf(` OR LOWER(g.email) = LOWER($%d)`, argIdx)
-		args = append(args, strings.TrimSpace(*email))
-		argIdx++
-	}
-	if address != nil && strings.TrimSpace(*address) != "" {
-		query += fmt.Sprintf(` OR LOWER(g.metadata->>'address') = LOWER($%d)`, argIdx)
-		args = append(args, strings.TrimSpace(*address))
-		argIdx++
-	}
-	if college != nil && strings.TrimSpace(*college) != "" {
-		query += fmt.Sprintf(` OR LOWER(g.metadata->>'college') = LOWER($%d)`, argIdx)
-		args = append(args, strings.TrimSpace(*college))
-	}
+	var query string
+	var args []interface{}
 
-	query += ` LIMIT 1`
+	if hasPhone || hasEmail {
+		parts := make([]string, 0, 2)
+		argIdx := 1
+		if hasPhone {
+			parts = append(parts, fmt.Sprintf(`g.phone_number = $%d`, argIdx))
+			args = append(args, strings.TrimSpace(*phone))
+			argIdx++
+		}
+		if hasEmail {
+			parts = append(parts, fmt.Sprintf(`LOWER(g.email) = LOWER($%d)`, argIdx))
+			args = append(args, strings.TrimSpace(*email))
+		}
+		query = guestSelectBase + ` WHERE (` + strings.Join(parts, ` OR `) + `) LIMIT 1`
+	} else {
+		query = guestSelectBase + `
+			WHERE LOWER(TRIM(g.name)) = LOWER($1)
+			  AND (g.phone_number IS NULL OR TRIM(g.phone_number) = '')
+			  AND (g.email IS NULL OR TRIM(g.email) = '')
+			LIMIT 1`
+		args = []interface{}{name}
+	}
 
 	var guest models.GuestWithChecker
 	err := r.db.GetContext(ctx, &guest, query, args...)

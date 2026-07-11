@@ -86,7 +86,7 @@ type CreateGuestRequest struct {
 	PhoneNumber *string                `json:"phone_number,omitempty"`
 	Email       *string                `json:"email,omitempty" binding:"omitempty,email"`
 	Address     *string                `json:"address,omitempty"`
-	College     *string                `json:"college,omitempty"`
+	Department  *string                `json:"department,omitempty"`
 	LeaderID    *int64                 `json:"leader_id,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
@@ -96,7 +96,7 @@ type UpdateGuestRequest struct {
 	PhoneNumber *string                `json:"phone_number,omitempty"`
 	Email       *string                `json:"email,omitempty" binding:"omitempty,email"`
 	Address     *string                `json:"address,omitempty"`
-	College     *string                `json:"college,omitempty"`
+	Department  *string                `json:"department,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 

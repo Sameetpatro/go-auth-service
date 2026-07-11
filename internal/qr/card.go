@@ -39,13 +39,13 @@ var (
 )
 
 type GuestCardInfo struct {
-	Name        string
-	Phone       string
-	Email       string
-	Address     string
-	College     string
-	EventName   string
-	EventDate   string
+	Name          string
+	Phone         string
+	Email         string
+	Address       string
+	Department    string
+	EventName     string
+	EventDate     string
 	EventLocation string
 }
 
@@ -142,7 +142,7 @@ func buildDetailLines(info GuestCardInfo, labelFace, bodyFace font.Face, maxWidt
 	addField("Phone", info.Phone)
 	addField("Email", info.Email)
 	addField("Address", info.Address)
-	addField("College", info.College)
+	addField("Department", info.Department)
 
 	if len(lines) == 0 {
 		lines = append(lines, "Invitation Card")
