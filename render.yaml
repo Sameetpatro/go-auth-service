@@ -33,7 +33,7 @@ services:
       - key: EVENT_NAME
         value: FELICITATIONS & VEER GOKULA MANCHAN
       - key: EVENT_DATE
-        value: "19 July 2026 | 2:00 PM"
+        value: "19 July 2026 | 1:00 PM"
       - key: EVENT_LOCATION
         value: Bharat Mandapam, New Delhi
       - key: CORS_ALLOWED_ORIGINS

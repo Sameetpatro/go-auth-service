@@ -10,7 +10,7 @@ func TestRenderInvitationCard(t *testing.T) {
 	data, err := renderInvitationCard("test-token", GuestCardInfo{
 		Name:          "Test Guest",
 		EventName:     "FELICITATIONS & VEER GOKULA MANCHAN",
-		EventDate:     "19 July 2026 | 2:00 PM",
+		EventDate:     "19 July 2026 | 1:00 PM",
 		EventLocation: "Bharat Mandapam, New Delhi",
 	})
 	if err != nil {

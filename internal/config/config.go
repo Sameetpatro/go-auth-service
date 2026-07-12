@@ -103,7 +103,7 @@ func Load() (*Config, error) {
 		},
 		Event: EventConfig{
 			Name:     getEnv("EVENT_NAME", "FELICITATIONS & VEER GOKULA MANCHAN"),
-			Date:     getEnv("EVENT_DATE", "19 July 2026 | 2:00 PM"),
+			Date:     getEnv("EVENT_DATE", "19 July 2026 | 1:00 PM"),
 			Location: getEnv("EVENT_LOCATION", "Bharat Mandapam, New Delhi"),
 		},
 		Storage: StorageConfig{
