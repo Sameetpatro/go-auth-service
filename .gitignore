@@ -33,3 +33,6 @@ go.work
 go.work.sum
 
 /scripts
+
+sample_data/
+docs/

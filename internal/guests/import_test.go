@@ -43,6 +43,34 @@ func TestParseCSV_bomHeader(t *testing.T) {
 	}
 }
 
+func TestNormalizePhone(t *testing.T) {
+	cases := map[string]string{
+		"9.0725E+10":    "90725000000",
+		"9.0725e+10":    "90725000000",
+		"9072512345":    "9072512345",
+		"9072512345.0":  "9072512345",
+		"+911234567890": "+911234567890",
+		"":              "",
+		"abc":           "abc",
+	}
+	for in, want := range cases {
+		if got := normalizePhone(in); got != want {
+			t.Errorf("normalizePhone(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestParseCSV_tagColumn(t *testing.T) {
+	csv := "name,phone_number,tag\nA,111,VIP\nB,222,\nC,333,core team\n"
+	rows, err := NewParser().ParseCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if rows[0].Tag != "VIP" || rows[1].Tag != "" || rows[2].Tag != "core team" {
+		t.Fatalf("unexpected tags: %+v", rows)
+	}
+}
+
 func TestParseFile_missingExtension(t *testing.T) {
 	csv := "name,phone_number,email\nTest User,+911234567890,test@example.com\n"
 	rows, err := ParseFile(nil, "document", strings.NewReader(csv))

@@ -7,6 +7,7 @@ import (
 	"github.com/sameetpatro/go-qr-auth/internal/dto"
 	"github.com/sameetpatro/go-qr-auth/internal/models"
 	"github.com/sameetpatro/go-qr-auth/internal/repository"
+	"github.com/sameetpatro/go-qr-auth/internal/tags"
 )
 
 type AnalyticsService struct {
@@ -262,6 +263,12 @@ func (s *InsightsService) GetInsights(ctx context.Context) (*dto.InsightsRespons
 		return nil, err
 	}
 
+	tagCounts, err := s.analytics.GuestCountsByTag(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tagDTO := buildTagBreakdown(tagCounts)
+
 	return &dto.InsightsResponse{
 		GuestsAddedPerDay:     addedDTO,
 		EntriesPerHour:        hourlyDTO,
@@ -272,5 +279,34 @@ func (s *InsightsService) GetInsights(ctx context.Context) (*dto.InsightsRespons
 		FailedScanAttempts:    failed,
 		TopScanningGates:      gatesDTO,
 		AverageEntryRate:      avgRate,
+		TagBreakdown:          tagDTO,
 	}, nil
+}
+
+// buildTagBreakdown normalizes raw metadata tags (folding legacy/unknown values
+// into "invitee") and returns one entry per known tag in catalogue order, so the
+// dashboard always shows a stable, colored set of member categories.
+func buildTagBreakdown(counts []struct {
+	Tag       string `db:"tag"`
+	Total     int64  `db:"total"`
+	CheckedIn int64  `db:"checked_in"`
+}) []dto.TagCount {
+	totals := make(map[string]int64)
+	checked := make(map[string]int64)
+	for _, c := range counts {
+		key := tags.Normalize(c.Tag)
+		totals[key] += c.Total
+		checked[key] += c.CheckedIn
+	}
+	result := make([]dto.TagCount, 0, len(tags.All()))
+	for _, t := range tags.All() {
+		result = append(result, dto.TagCount{
+			Tag:       t.Key,
+			Display:   t.Display,
+			Color:     t.Hex(),
+			Total:     totals[t.Key],
+			CheckedIn: checked[t.Key],
+		})
+	}
+	return result
 }

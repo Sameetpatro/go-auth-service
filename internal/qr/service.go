@@ -131,6 +131,11 @@ func (s *Service) buildCardInfo(input GuestQRInput) GuestCardInfo {
 		EventDate:     s.event.Date,
 		EventLocation: s.event.Location,
 	}
+	if input.Metadata != nil {
+		if v, ok := input.Metadata["tag"].(string); ok {
+			info.Tag = v
+		}
+	}
 	if input.Phone != nil {
 		info.Phone = *input.Phone
 	}

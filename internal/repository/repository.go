@@ -650,6 +650,26 @@ func (r *AnalyticsRepository) VIPEntries(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+func (r *AnalyticsRepository) GuestCountsByTag(ctx context.Context) ([]struct {
+	Tag       string `db:"tag"`
+	Total     int64  `db:"total"`
+	CheckedIn int64  `db:"checked_in"`
+}, error) {
+	var results []struct {
+		Tag       string `db:"tag"`
+		Total     int64  `db:"total"`
+		CheckedIn int64  `db:"checked_in"`
+	}
+	query := `
+		SELECT COALESCE(NULLIF(metadata->>'tag', ''), 'invitee') AS tag,
+			COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE is_checked_in = TRUE) AS checked_in
+		FROM guests
+		GROUP BY 1`
+	err := r.db.SelectContext(ctx, &results, query)
+	return results, err
+}
+
 func (r *AnalyticsRepository) HourlyEntryCount(ctx context.Context) ([]struct {
 	Hour  int   `db:"hour"`
 	Count int64 `db:"count"`
@@ -668,18 +688,18 @@ func (r *AnalyticsRepository) HourlyEntryCount(ctx context.Context) ([]struct {
 }
 
 func (r *AnalyticsRepository) LeaderGuestStats(ctx context.Context) ([]struct {
-	UserID      int64  `db:"user_id"`
-	Email       string `db:"email"`
+	UserID      int64   `db:"user_id"`
+	Email       string  `db:"email"`
 	DisplayName *string `db:"display_name"`
-	TotalGuests int64  `db:"total_guests"`
-	CheckedIn   int64  `db:"checked_in"`
+	TotalGuests int64   `db:"total_guests"`
+	CheckedIn   int64   `db:"checked_in"`
 }, error) {
 	var results []struct {
-		UserID      int64  `db:"user_id"`
-		Email       string `db:"email"`
+		UserID      int64   `db:"user_id"`
+		Email       string  `db:"email"`
 		DisplayName *string `db:"display_name"`
-		TotalGuests int64  `db:"total_guests"`
-		CheckedIn   int64  `db:"checked_in"`
+		TotalGuests int64   `db:"total_guests"`
+		CheckedIn   int64   `db:"checked_in"`
 	}
 	query := `
 		SELECT u.id AS user_id, u.email, u.display_name,

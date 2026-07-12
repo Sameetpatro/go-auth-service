@@ -6,6 +6,9 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"math"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/xuri/excelize/v2"
@@ -17,12 +20,17 @@ type GuestRow struct {
 	Email       string
 	Address     string
 	Department  string
+	Tag         string
 	Extra       map[string]string
 }
 
 var coreFields = map[string]bool{
-	"name": true, "phone_number": true, "email": true, "address": true, "department": true, "college": true,
+	"name": true, "phone_number": true, "email": true, "address": true, "department": true, "college": true, "tag": true,
 }
+
+// sciNotation matches spreadsheet-mangled numbers like "9.0725E+10" that Excel
+// produces when a phone column is stored as a number instead of text.
+var sciNotation = regexp.MustCompile(`(?i)^[+-]?\d+(\.\d+)?e[+-]?\d+$`)
 
 type Parser struct{}
 
@@ -56,7 +64,10 @@ func (p *Parser) ParseXLSX(r io.Reader) ([]GuestRow, error) {
 	if len(sheets) == 0 {
 		return nil, fmt.Errorf("xlsx has no sheets")
 	}
-	rows, err := f.GetRows(sheets[0])
+	// RawCellValue keeps numeric cells as their stored value (e.g. "9072512345")
+	// instead of Excel's formatted display (e.g. "9.0725E+10"), which is the
+	// root cause of phone numbers arriving in scientific notation.
+	rows, err := f.GetRows(sheets[0], excelize.Options{RawCellValue: true})
 	if err != nil {
 		return nil, err
 	}
@@ -88,13 +99,15 @@ func (p *Parser) parseRecords(headers []string, records [][]string) ([]GuestRow,
 			case "name":
 				row.Name = val
 			case "phone_number", "phone":
-				row.PhoneNumber = val
+				row.PhoneNumber = normalizePhone(val)
 			case "email":
 				row.Email = val
 			case "address":
 				row.Address = val
 			case "department", "college":
 				row.Department = val
+			case "tag":
+				row.Tag = val
 			default:
 				if val != "" {
 					row.Extra[field] = val
@@ -119,9 +132,37 @@ func normalizeField(h string) string {
 		return "name"
 	case "college", "dept":
 		return "department"
+	case "type", "member_type", "membertype", "category", "member", "role":
+		return "tag"
 	default:
 		return h
 	}
+}
+
+// normalizePhone repairs phone strings that arrived as scientific notation
+// (e.g. "9.0725E+10") by converting them back to a plain integer string.
+// Non-numeric or already-clean values are returned unchanged.
+func normalizePhone(val string) string {
+	if val == "" {
+		return val
+	}
+	if !sciNotation.MatchString(val) {
+		// Also strip a stray trailing ".0" from whole-number cells.
+		if strings.HasSuffix(val, ".0") {
+			if _, err := strconv.ParseFloat(val, 64); err == nil {
+				return strings.TrimSuffix(val, ".0")
+			}
+		}
+		return val
+	}
+	f, err := strconv.ParseFloat(val, 64)
+	if err != nil {
+		return val
+	}
+	if f != math.Trunc(f) || math.Abs(f) >= 1e18 {
+		return val
+	}
+	return strconv.FormatInt(int64(f), 10)
 }
 
 func stripBOM(s string) string {
@@ -141,6 +182,9 @@ func RowToMetadata(row GuestRow) map[string]interface{} {
 	meta := make(map[string]interface{})
 	for k, v := range row.Extra {
 		meta[k] = v
+	}
+	if row.Tag != "" {
+		meta["tag"] = row.Tag
 	}
 	return meta
 }

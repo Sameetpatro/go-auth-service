@@ -17,25 +17,28 @@ import (
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
+
+	"github.com/sameetpatro/go-qr-auth/internal/tags"
 )
 
 const (
-	canvasWidth  = 480
-	qrSize       = 220
-	horizPad     = 28
-	vertPad      = 24
-	lineGap      = 6
-	headerHeight = 72
-	footerPad    = 20
+	canvasWidth     = 480
+	qrSize          = 220
+	horizPad        = 28
+	vertPad         = 24
+	lineGap         = 6
+	headerHeight    = 72
+	footerPad       = 20
+	tagBannerHeight = 34
 )
 
 var (
-	colorPrimary   = color.RGBA{R: 26, G: 35, B: 126, A: 255}   // deep indigo
-	colorAccent    = color.RGBA{R: 255, G: 193, B: 7, A: 255}   // gold accent
-	colorBg        = color.RGBA{R: 250, G: 251, B: 255, A: 255} // soft white
-	colorText      = color.RGBA{R: 33, G: 33, B: 33, A: 255}
-	colorMuted     = color.RGBA{R: 97, G: 97, B: 97, A: 255}
-	colorDivider   = color.RGBA{R: 224, G: 224, B: 224, A: 255}
+	colorPrimary = color.RGBA{R: 26, G: 35, B: 126, A: 255}   // deep indigo
+	colorAccent  = color.RGBA{R: 255, G: 193, B: 7, A: 255}   // gold accent
+	colorBg      = color.RGBA{R: 250, G: 251, B: 255, A: 255} // soft white
+	colorText    = color.RGBA{R: 33, G: 33, B: 33, A: 255}
+	colorMuted   = color.RGBA{R: 97, G: 97, B: 97, A: 255}
+	colorDivider = color.RGBA{R: 224, G: 224, B: 224, A: 255}
 )
 
 type GuestCardInfo struct {
@@ -47,6 +50,8 @@ type GuestCardInfo struct {
 	EventName     string
 	EventDate     string
 	EventLocation string
+	// Tag is the raw/normalized member tag key (e.g. "vip"); empty defaults to invitee.
+	Tag string
 }
 
 func renderInvitationCard(token string, info GuestCardInfo) ([]byte, error) {
@@ -77,6 +82,12 @@ func renderInvitationCard(token string, info GuestCardInfo) ([]byte, error) {
 		return nil, err
 	}
 
+	tag := tags.Get(info.Tag)
+	tagLabelFace, err := loadFontFace(gobold.TTF, 15)
+	if err != nil {
+		return nil, err
+	}
+
 	detailLines := buildDetailLines(info, labelFace, bodyFace, canvasWidth-2*horizPad)
 	detailBlockHeight := textBlockHeight(detailLines, bodyFace, lineGap) + 8
 
@@ -86,22 +97,42 @@ func renderInvitationCard(token string, info GuestCardInfo) ([]byte, error) {
 	)
 	eventBlockHeight := textBlockHeight(eventLines, bodyFace, lineGap)
 
-	canvasHeight := vertPad + headerHeight + qrSize + 20 + eventBlockHeight + 16 + detailBlockHeight + footerPad + vertPad
+	canvasHeight := vertPad + headerHeight + tagBannerHeight + qrSize + 20 + eventBlockHeight + 16 + detailBlockHeight + footerPad + vertPad
 
 	canvas := image.NewRGBA(image.Rect(0, 0, canvasWidth, canvasHeight))
 	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{colorBg}, image.Point{}, draw.Src)
 
 	// Header band
 	draw.Draw(canvas, image.Rect(0, 0, canvasWidth, headerHeight), &image.Uniform{colorPrimary}, image.Point{}, draw.Src)
-	draw.Draw(canvas, image.Rect(0, headerHeight-4, canvasWidth, headerHeight), &image.Uniform{colorAccent}, image.Point{}, draw.Src)
+	draw.Draw(canvas, image.Rect(0, headerHeight-4, canvasWidth, headerHeight), &image.Uniform{tag.Color}, image.Point{}, draw.Src)
 
 	// Guest name in header
 	nameLines := wrapText(strings.ToUpper(info.Name), nameFace, canvasWidth-2*horizPad)
 	nameY := (headerHeight - textBlockHeight(nameLines, nameFace, 4)) / 2
 	drawCenteredLines(canvas, nameLines, nameFace, nameY, 4, color.White)
 
-	// QR code with border
-	qrY := headerHeight + vertPad
+	// Tag banner in the member's color, right below the header.
+	bannerTop := headerHeight
+	bannerBottom := headerHeight + tagBannerHeight
+	draw.Draw(canvas, image.Rect(0, bannerTop, canvasWidth, bannerBottom), &image.Uniform{tag.Color}, image.Point{}, draw.Src)
+	// A thin darker underline keeps white/light banners visually separated from the card body.
+	draw.Draw(canvas, image.Rect(0, bannerBottom-2, canvasWidth, bannerBottom), &image.Uniform{tags.Darken(tag.Color, 0.7)}, image.Point{}, draw.Src)
+	tagText := strings.ToUpper(tag.Display)
+	tagTextW := textWidth(tagText, tagLabelFace)
+	tagTextX := (canvasWidth - tagTextW) / 2
+	tagMetrics := tagLabelFace.Metrics()
+	tagTextY := bannerTop + (tagBannerHeight+tagMetrics.Ascent.Ceil()-tagMetrics.Descent.Ceil())/2
+	tagDrawer := &font.Drawer{
+		Dst:  canvas,
+		Src:  image.NewUniform(tags.TextColor(tag.Color)),
+		Face: tagLabelFace,
+		Dot:  fixed.P(tagTextX, tagTextY),
+	}
+	tagDrawer.DrawString(tagText)
+
+	// QR code with border (kept black-on-white so scanners read it reliably;
+	// the member color is conveyed by the header/banner/border instead).
+	qrY := bannerBottom + vertPad
 	qrX := (canvasWidth - qrSize) / 2
 	borderPad := 8
 	draw.Draw(canvas,
@@ -109,7 +140,7 @@ func renderInvitationCard(token string, info GuestCardInfo) ([]byte, error) {
 		&image.Uniform{color.White}, image.Point{}, draw.Src)
 	draw.Draw(canvas,
 		image.Rect(qrX-borderPad, qrY-borderPad, qrX+qrSize+borderPad, qrY+qrSize+borderPad),
-		&image.Uniform{colorDivider}, image.Point{}, draw.Src)
+		&image.Uniform{tags.Darken(tag.Color, 0.85)}, image.Point{}, draw.Src)
 	draw.Draw(canvas, image.Rect(qrX, qrY, qrX+qrSize, qrY+qrSize), qrImg, image.Point{}, draw.Over)
 
 	// Event info below QR

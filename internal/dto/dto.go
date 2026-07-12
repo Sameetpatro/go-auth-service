@@ -58,13 +58,13 @@ type CreateLeaderResponse struct {
 }
 
 type LeaderResponse struct {
-	ID          int64     `json:"id"`
-	Email       string    `json:"email"`
-	Username    string    `json:"username"`
-	IsActive    bool      `json:"is_active"`
-	GuestCount  int64     `json:"guest_count"`
-	CheckedIn   int64     `json:"checked_in_count"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID         int64     `json:"id"`
+	Email      string    `json:"email"`
+	Username   string    `json:"username"`
+	IsActive   bool      `json:"is_active"`
+	GuestCount int64     `json:"guest_count"`
+	CheckedIn  int64     `json:"checked_in_count"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type CoordinatorResponse struct {
@@ -87,6 +87,7 @@ type CreateGuestRequest struct {
 	Email       *string                `json:"email,omitempty" binding:"omitempty,email"`
 	Address     *string                `json:"address,omitempty"`
 	Department  *string                `json:"department,omitempty"`
+	Tag         *string                `json:"tag,omitempty"`
 	LeaderID    *int64                 `json:"leader_id,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
@@ -97,31 +98,33 @@ type UpdateGuestRequest struct {
 	Email       *string                `json:"email,omitempty" binding:"omitempty,email"`
 	Address     *string                `json:"address,omitempty"`
 	Department  *string                `json:"department,omitempty"`
+	Tag         *string                `json:"tag,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type GuestResponse struct {
-	ID              int64                  `json:"id"`
-	UUID            uuid.UUID              `json:"uuid"`
-	Name            string                 `json:"name"`
-	PhoneNumber     *string                `json:"phone_number,omitempty"`
-	Email           *string                `json:"email,omitempty"`
-	QRImageURL      *string                `json:"qr_image_url,omitempty"`
-	IsCheckedIn     bool                   `json:"is_checked_in"`
-	CheckedInAt     *time.Time             `json:"checked_in_at,omitempty"`
-	CheckedInBy     *int64                 `json:"checked_in_by,omitempty"`
-	CheckedInByEmail *string               `json:"checked_in_by_email,omitempty"`
-	CreatedBy        *int64                `json:"created_by,omitempty"`
-	CreatedByEmail   *string               `json:"created_by_email,omitempty"`
+	ID               int64                  `json:"id"`
+	UUID             uuid.UUID              `json:"uuid"`
+	Name             string                 `json:"name"`
+	PhoneNumber      *string                `json:"phone_number,omitempty"`
+	Email            *string                `json:"email,omitempty"`
+	QRImageURL       *string                `json:"qr_image_url,omitempty"`
+	Tag              string                 `json:"tag"`
+	IsCheckedIn      bool                   `json:"is_checked_in"`
+	CheckedInAt      *time.Time             `json:"checked_in_at,omitempty"`
+	CheckedInBy      *int64                 `json:"checked_in_by,omitempty"`
+	CheckedInByEmail *string                `json:"checked_in_by_email,omitempty"`
+	CreatedBy        *int64                 `json:"created_by,omitempty"`
+	CreatedByEmail   *string                `json:"created_by_email,omitempty"`
 	Metadata         map[string]interface{} `json:"metadata,omitempty"`
-	CreatedAt       time.Time              `json:"created_at"`
-	UpdatedAt       time.Time              `json:"updated_at"`
+	CreatedAt        time.Time              `json:"created_at"`
+	UpdatedAt        time.Time              `json:"updated_at"`
 }
 
 type GuestSearchResponse struct {
-	Guest     GuestResponse `json:"guest"`
-	QRStatus  string        `json:"qr_status"`
-	EntryStatus string      `json:"entry_status"`
+	Guest       GuestResponse `json:"guest"`
+	QRStatus    string        `json:"qr_status"`
+	EntryStatus string        `json:"entry_status"`
 }
 
 type ScanRequest struct {
@@ -130,19 +133,19 @@ type ScanRequest struct {
 }
 
 type ScanResponse struct {
-	Result            string     `json:"result"`
-	Guest             *GuestResponse `json:"guest,omitempty"`
-	CheckedInAt       *time.Time `json:"checked_in_at,omitempty"`
-	CheckedInBy       *int64     `json:"checked_in_by,omitempty"`
-	CheckedInByEmail  *string    `json:"checked_in_by_email,omitempty"`
-	Message           string     `json:"message"`
+	Result           string         `json:"result"`
+	Guest            *GuestResponse `json:"guest,omitempty"`
+	CheckedInAt      *time.Time     `json:"checked_in_at,omitempty"`
+	CheckedInBy      *int64         `json:"checked_in_by,omitempty"`
+	CheckedInByEmail *string        `json:"checked_in_by_email,omitempty"`
+	Message          string         `json:"message"`
 }
 
 type ImportResult struct {
-	TotalRows   int      `json:"total_rows"`
-	Imported    int      `json:"imported"`
-	Failed      int      `json:"failed"`
-	Errors      []string `json:"errors,omitempty"`
+	TotalRows int      `json:"total_rows"`
+	Imported  int      `json:"imported"`
+	Failed    int      `json:"failed"`
+	Errors    []string `json:"errors,omitempty"`
 }
 
 type GuestInvitation struct {
@@ -164,12 +167,12 @@ type InviteAllResult struct {
 }
 
 type AnalyticsOverview struct {
-	TotalGuests        int64   `json:"total_guests"`
-	TotalCheckedIn     int64   `json:"total_checked_in"`
-	TotalPending       int64   `json:"total_pending"`
-	CheckInPercentage  float64 `json:"check_in_percentage"`
-	TodayEntries       int64   `json:"today_entries"`
-	VIPEntries         int64   `json:"vip_entries"`
+	TotalGuests       int64   `json:"total_guests"`
+	TotalCheckedIn    int64   `json:"total_checked_in"`
+	TotalPending      int64   `json:"total_pending"`
+	CheckInPercentage float64 `json:"check_in_percentage"`
+	TodayEntries      int64   `json:"today_entries"`
+	VIPEntries        int64   `json:"vip_entries"`
 }
 
 type HourlyEntryCount struct {
@@ -184,12 +187,12 @@ type CoordinatorEntryCount struct {
 }
 
 type AnalyticsResponse struct {
-	Overview            AnalyticsOverview       `json:"overview"`
-	HourlyEntryCount    []HourlyEntryCount      `json:"hourly_entry_count"`
-	CoordinatorEntries  []CoordinatorEntryCount `json:"coordinator_entries"`
-	LeaderEntries       []CoordinatorEntryCount `json:"leader_entries"`
-	MasterEntries       []CoordinatorEntryCount `json:"master_entries"`
-	LeaderGuestStats    []LeaderGuestStats      `json:"leader_guest_stats,omitempty"`
+	Overview           AnalyticsOverview       `json:"overview"`
+	HourlyEntryCount   []HourlyEntryCount      `json:"hourly_entry_count"`
+	CoordinatorEntries []CoordinatorEntryCount `json:"coordinator_entries"`
+	LeaderEntries      []CoordinatorEntryCount `json:"leader_entries"`
+	MasterEntries      []CoordinatorEntryCount `json:"master_entries"`
+	LeaderGuestStats   []LeaderGuestStats      `json:"leader_guest_stats,omitempty"`
 }
 
 type LeaderGuestStats struct {
@@ -202,15 +205,24 @@ type LeaderGuestStats struct {
 }
 
 type InsightsResponse struct {
-	GuestsAddedPerDay       []DailyCount            `json:"guests_added_per_day"`
-	EntriesPerHour          []HourlyEntryCount      `json:"entries_per_hour"`
-	MostActiveCoordinator   *CoordinatorEntryCount  `json:"most_active_coordinator"`
-	PeakEntryTime           *string                 `json:"peak_entry_time"`
-	PendingGuests           int64                   `json:"pending_guests"`
-	DuplicateScanAttempts   int64                   `json:"duplicate_scan_attempts"`
-	FailedScanAttempts      int64                   `json:"failed_scan_attempts"`
-	TopScanningGates        []GateCount             `json:"top_scanning_gates"`
-	AverageEntryRate        float64                 `json:"average_entry_rate"`
+	GuestsAddedPerDay     []DailyCount           `json:"guests_added_per_day"`
+	EntriesPerHour        []HourlyEntryCount     `json:"entries_per_hour"`
+	MostActiveCoordinator *CoordinatorEntryCount `json:"most_active_coordinator"`
+	PeakEntryTime         *string                `json:"peak_entry_time"`
+	PendingGuests         int64                  `json:"pending_guests"`
+	DuplicateScanAttempts int64                  `json:"duplicate_scan_attempts"`
+	FailedScanAttempts    int64                  `json:"failed_scan_attempts"`
+	TopScanningGates      []GateCount            `json:"top_scanning_gates"`
+	AverageEntryRate      float64                `json:"average_entry_rate"`
+	TagBreakdown          []TagCount             `json:"tag_breakdown"`
+}
+
+type TagCount struct {
+	Tag       string `json:"tag"`     // canonical key, e.g. "vip"
+	Display   string `json:"display"` // human label, e.g. "VIP"
+	Color     string `json:"color"`   // hex color, e.g. "#8FD8F0"
+	Total     int64  `json:"total"`
+	CheckedIn int64  `json:"checked_in"`
 }
 
 type DailyCount struct {

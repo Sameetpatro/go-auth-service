@@ -12,11 +12,12 @@ import (
 
 	"github.com/google/uuid"
 
-	importsvc "github.com/sameetpatro/go-qr-auth/internal/guests"
 	"github.com/sameetpatro/go-qr-auth/internal/dto"
+	importsvc "github.com/sameetpatro/go-qr-auth/internal/guests"
 	"github.com/sameetpatro/go-qr-auth/internal/models"
 	"github.com/sameetpatro/go-qr-auth/internal/notifications"
 	"github.com/sameetpatro/go-qr-auth/internal/qr"
+	"github.com/sameetpatro/go-qr-auth/internal/tags"
 )
 
 func (s *GuestService) Create(ctx context.Context, req dto.CreateGuestRequest, userID int64, role models.UserRole, ip string) (*dto.GuestResponse, error) {
@@ -73,6 +74,15 @@ func (s *GuestService) createOwnedGuest(ctx context.Context, req dto.CreateGuest
 	if req.Department != nil && *req.Department != "" {
 		department = req.Department
 	}
+	// Always persist a normalized member tag (defaults to "invitee") so the QR
+	// card, scanner flash, and analytics have a consistent value to work with.
+	rawTag := ""
+	if req.Tag != nil {
+		rawTag = *req.Tag
+	} else if v, ok := meta["tag"].(string); ok {
+		rawTag = v
+	}
+	meta["tag"] = tags.Normalize(rawTag)
 
 	dup, err := s.guests.FindDuplicate(ctx, req.Name, req.PhoneNumber, req.Email)
 	if err != nil {
@@ -241,6 +251,9 @@ func (s *GuestService) Update(ctx context.Context, id int64, req dto.UpdateGuest
 	if req.Department != nil {
 		meta["department"] = *req.Department
 		delete(meta, "college")
+	}
+	if req.Tag != nil {
+		meta["tag"] = tags.Normalize(*req.Tag)
 	}
 	metaJSON, err := json.Marshal(meta)
 	if err != nil {
@@ -691,6 +704,12 @@ func (s *GuestService) InviteAll(ctx context.Context, userID int64, role models.
 
 func toGuestResponse(g *models.GuestWithChecker) dto.GuestResponse {
 	metadata := qr.RawMetadata(g.Metadata)
+	tag := tags.DefaultKey
+	if metadata != nil {
+		if v, ok := metadata["tag"].(string); ok {
+			tag = tags.Normalize(v)
+		}
+	}
 	// Prefer the permanent CDN URL; ephemeral /storage/qr URLs from the old
 	// disk-based flow fall back to the API endpoint, which regenerates on demand.
 	qrURL := guestQRImageURL(g.ID)
@@ -704,6 +723,7 @@ func toGuestResponse(g *models.GuestWithChecker) dto.GuestResponse {
 		PhoneNumber:      g.PhoneNumber,
 		Email:            g.Email,
 		QRImageURL:       &qrURL,
+		Tag:              tag,
 		IsCheckedIn:      g.IsCheckedIn,
 		CheckedInAt:      g.CheckedInAt,
 		CheckedInBy:      g.CheckedInBy,
